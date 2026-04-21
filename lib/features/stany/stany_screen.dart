@@ -165,6 +165,43 @@ class _StanyScreenState extends ConsumerState<StanyScreen> {
 
   static const _filters = ['Wszystkie', 'Przecier', 'Sok', 'Obieranie', 'Świeże'];
 
+  List<Widget> _buildTwoColumns(
+    List<StanOdmiany> entries,
+    Map<String, _CrateInfo> crateMap,
+    WidgetRef ref,
+  ) {
+    final widgets = <Widget>[];
+    for (int i = 0; i < entries.length; i += 2) {
+      final a = entries[i];
+      final b = i + 1 < entries.length ? entries[i + 1] : null;
+      widgets.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _LotCard(
+            entry: a,
+            przeznaczenieColor: _przeznaczenieColor(a.przeznaczenie),
+            crateInfo: crateMap[a.id],
+            onPrzeznaczenieChanged: () {
+              ref.invalidate(stanyProvider);
+              ref.invalidate(crateInfoMapProvider);
+            },
+          )),
+          const SizedBox(width: 6),
+          Expanded(child: b == null ? const SizedBox() : _LotCard(
+            entry: b,
+            przeznaczenieColor: _przeznaczenieColor(b.przeznaczenie),
+            crateInfo: crateMap[b.id],
+            onPrzeznaczenieChanged: () {
+              ref.invalidate(stanyProvider);
+              ref.invalidate(crateInfoMapProvider);
+            },
+          )),
+        ],
+      ));
+    }
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
     final stanyAsync    = ref.watch(stanyProvider);
@@ -235,18 +272,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen> {
                       if (filtered.isEmpty)
                         const _EmptyView()
                       else
-                        ...filtered.map((e) {
-                          final crate = crateMap[e.id];
-                          return _LotCard(
-                            entry: e,
-                            przeznaczenieColor: _przeznaczenieColor(e.przeznaczenie),
-                            crateInfo: crate,
-                            onPrzeznaczenieChanged: () {
-                              ref.invalidate(stanyProvider);
-                              ref.invalidate(crateInfoMapProvider);
-                            },
-                          );
-                        }),
+                        ..._buildTwoColumns(filtered, crateMap, ref),
                     ],
                   );
                 },
@@ -313,9 +339,29 @@ class _MagazynSummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: _columns.map((col) {
                 final data = byPrzezn[col.kod] ?? {};
-                final sorted = data.entries.toList()
-                  ..sort((a, b) => b.value.compareTo(a.value));
                 final total = data.values.fold(0.0, (a, v) => a + v);
+
+                // Grupuj po owoc: jabłko i gruszka z podmianami, reszta bezpośrednio
+                final jablkoOdm = <String, double>{};
+                final gruszkaOdm = <String, double>{};
+                final inneOdm = <String, double>{};
+
+                for (final e in entries) {
+                  final przKod = _extractKod(e.przeznaczenie);
+                  if (przKod != col.kod) continue;
+                  final owoc = e.owoc.trim().toLowerCase();
+                  final odmiana = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
+                  if (owoc == 'jabłko' || owoc.contains('jab')) {
+                    jablkoOdm[odmiana] = (jablkoOdm[odmiana] ?? 0) + e.kgValue;
+                  } else if (owoc == 'gruszka' || owoc.contains('gruszk')) {
+                    gruszkaOdm[odmiana] = (gruszkaOdm[odmiana] ?? 0) + e.kgValue;
+                  } else {
+                    inneOdm[odmiana] = (inneOdm[odmiana] ?? 0) + e.kgValue;
+                  }
+                }
+
+                final jablkoTotal  = jablkoOdm.values.fold(0.0, (a, v) => a + v);
+                final gruszkaTotal = gruszkaOdm.values.fold(0.0, (a, v) => a + v);
 
                 return Expanded(
                   child: Padding(
@@ -323,7 +369,6 @@ class _MagazynSummaryCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Nagłówek kolumny
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                           decoration: BoxDecoration(
@@ -334,48 +379,47 @@ class _MagazynSummaryCard extends StatelessWidget {
                               style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
                               textAlign: TextAlign.center),
                         ),
-                        // Nagłówek tabeli
-                        Container(
-                          decoration: BoxDecoration(color: col.color.withAlpha(25)),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                          child: Row(children: [
-                            const Expanded(child: Text('ODMIANA', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700))),
-                            const Text('kg', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)),
-                          ]),
-                        ),
-                        // Wiersze odmian
                         Container(
                           decoration: BoxDecoration(
                             border: Border.all(color: col.color.withAlpha(60), width: 0.5),
                             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
                           ),
-                          child: sorted.isEmpty
+                          child: total == 0
                               ? const Padding(
                                   padding: EdgeInsets.all(8),
                                   child: Text('—', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary), textAlign: TextAlign.center),
                                 )
-                              : Column(
-                                  children: [
-                                    ...sorted.map((od) => _OdmianaRow(
-                                      odmiana: od.key,
-                                      kg: od.value,
-                                      total: total,
-                                      color: col.color,
-                                    )),
-                                    // Suma
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: col.color.withAlpha(20),
-                                        border: Border(top: BorderSide(color: col.color.withAlpha(60), width: 0.5)),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                      child: Row(children: [
-                                        const Expanded(child: Text('SUMA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-                                        Text('${_fmt(total)} kg', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                                      ]),
-                                    ),
+                              : Column(children: [
+                                  if (jablkoTotal > 0) ...[
+                                    _FruitGroupHeader('Jabłko', jablkoTotal, col.color),
+                                    ...(_sortedEntries(jablkoOdm).map((od) => _OdmianaRow(
+                                      odmiana: od.key, kg: od.value,
+                                      total: jablkoTotal, color: col.color, indent: true,
+                                    ))),
                                   ],
-                                ),
+                                  if (gruszkaTotal > 0) ...[
+                                    _FruitGroupHeader('Gruszka', gruszkaTotal, col.color),
+                                    ...(_sortedEntries(gruszkaOdm).map((od) => _OdmianaRow(
+                                      odmiana: od.key, kg: od.value,
+                                      total: gruszkaTotal, color: col.color, indent: true,
+                                    ))),
+                                  ],
+                                  ...(_sortedEntries(inneOdm).map((od) => _OdmianaRow(
+                                    odmiana: od.key, kg: od.value,
+                                    total: total, color: col.color,
+                                  ))),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: col.color.withAlpha(20),
+                                      border: Border(top: BorderSide(color: col.color.withAlpha(60), width: 0.5)),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    child: Row(children: [
+                                      const Expanded(child: Text('SUMA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+                                      Text('${_fmt(total)} kg', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                                    ]),
+                                  ),
+                                ]),
                         ),
                       ],
                     ),
@@ -398,7 +442,31 @@ class _MagazynSummaryCard extends StatelessWidget {
     return p.isNotEmpty ? p[0] : '';
   }
 
+  static List<MapEntry<String, double>> _sortedEntries(Map<String, double> map) {
+    final list = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return list;
+  }
+
   static String _fmt(double v) => v.toStringAsFixed(0);
+}
+
+class _FruitGroupHeader extends StatelessWidget {
+  final String owoc;
+  final double kg;
+  final Color color;
+  const _FruitGroupHeader(this.owoc, this.kg, this.color);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
+    decoration: BoxDecoration(color: color.withAlpha(15)),
+    child: Row(children: [
+      Expanded(child: Text(owoc.toUpperCase(),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color))),
+      Text('${kg.toStringAsFixed(0)} kg',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+    ]),
+  );
 }
 
 class _OdmianaRow extends StatelessWidget {
@@ -406,16 +474,17 @@ class _OdmianaRow extends StatelessWidget {
   final double kg;
   final double total;
   final Color color;
+  final bool indent;
 
-  const _OdmianaRow({required this.odmiana, required this.kg, required this.total, required this.color});
+  const _OdmianaRow({required this.odmiana, required this.kg, required this.total, required this.color, this.indent = false});
 
   @override
   Widget build(BuildContext context) {
     final ratio = total <= 0 ? 0.0 : (kg / total).clamp(0.0, 1.0);
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      padding: EdgeInsets.fromLTRB(indent ? 16 : 8, 5, 8, 5),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: color.withAlpha(30), width: 0.5)),
+        border: Border(bottom: BorderSide(color: color.withAlpha(20), width: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -425,20 +494,21 @@ class _OdmianaRow extends StatelessWidget {
               child: Text(odmiana,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
+                      color: indent ? AppTheme.textSecondary : null)),
             ),
             const SizedBox(width: 6),
             Text('${kg.toStringAsFixed(0)} kg',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: ratio,
-              minHeight: 6,
+              minHeight: 5,
               color: color,
-              backgroundColor: color.withAlpha(25),
+              backgroundColor: color.withAlpha(20),
             ),
           ),
         ],
@@ -532,13 +602,13 @@ class _LotCard extends StatelessWidget {
               Row(children: [
                 _CrateBadge(
                   icon: Icons.inventory_outlined,
-                  label: '${crateInfo!.drewRemaining}D + ${crateInfo!.plastRemaining}P',
+                  label: _crateLabel(crateInfo!),
                   color: AppTheme.primaryMid,
                 ),
                 const SizedBox(width: 8),
                 _CrateBadge(
                   icon: Icons.scale_outlined,
-                  label: '~${crateInfo!.kgPerCrate.toStringAsFixed(1)} kg/skrz.',
+                  label: _kgPerCrateLabel(crateInfo!),
                   color: AppTheme.accent,
                 ),
               ]),
@@ -574,6 +644,21 @@ class _LotCard extends StatelessWidget {
   }
 
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  String _crateLabel(_CrateInfo c) {
+    if (c.drewRemaining > 0 && c.plastRemaining > 0) return '${c.drewRemaining}D + ${c.plastRemaining}P';
+    if (c.drewRemaining > 0) return '${c.drewRemaining}D';
+    return '${c.plastRemaining}P';
+  }
+
+  String _kgPerCrateLabel(_CrateInfo c) {
+    final avg = c.total > 0 ? (c.kgRemaining / c.total) : 0.0;
+    if (c.drewRemaining > 0 && c.plastRemaining > 0) {
+      return '~${avg.toStringAsFixed(1)} kg/D  ~${avg.toStringAsFixed(1)} kg/P';
+    }
+    if (c.drewRemaining > 0) return '~${avg.toStringAsFixed(1)} kg/D';
+    return '~${avg.toStringAsFixed(1)} kg/P';
+  }
 }
 
 class _InfoLine extends StatelessWidget {
