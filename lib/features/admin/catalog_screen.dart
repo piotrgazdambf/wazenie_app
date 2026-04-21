@@ -516,6 +516,17 @@ class _DostawcyTab extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _resetAndSeed(context, docs),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Resetuj'),
+                    style: OutlinedButton.styleFrom(
+                      textStyle: const TextStyle(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      foregroundColor: AppTheme.errorRed,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -627,6 +638,52 @@ class _DostawcyTab extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _resetAndSeed(BuildContext context, List<QueryDocumentSnapshot> existing) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Resetuj dostawców'),
+        content: const Text('Usunie WSZYSTKICH dostawców i wgra świeżą listę. Na pewno?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Resetuj i seeduj'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    final db = FirebaseFirestore.instance;
+    var batch = db.batch();
+    int count = 0;
+    for (final doc in existing) {
+      batch.delete(doc.reference);
+      count++;
+      if (count == 500) { await batch.commit(); batch = db.batch(); count = 0; }
+    }
+    if (count > 0) await batch.commit();
+
+    batch = db.batch();
+    count = 0;
+    int written = 0;
+    for (final (kod, nazwa) in _suppliersToSeed) {
+      batch.set(db.collection(AppConstants.colSuppliers).doc(), {'kod': kod, 'nazwa': nazwa});
+      count++;
+      if (count == 500) { await batch.commit(); batch = db.batch(); count = 0; }
+      written++;
+    }
+    if (count > 0) await batch.commit();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Zresetowano. Dodano $written dostawców.')),
+      );
+    }
   }
 
   Future<void> _seedSuppliers(BuildContext context, List<QueryDocumentSnapshot> existing) async {
