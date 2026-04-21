@@ -1,7 +1,8 @@
-import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'logo_mbf_b64.dart';
 
 // ── Kolory ────────────────────────────────────────────────────────────────────
 
@@ -31,8 +32,8 @@ Future<void> printKwCard(Map<String, dynamic> data) async {
 
 Future<pw.ImageProvider?> _loadLogo() async {
   try {
-    final bytes = await rootBundle.load('assets/images/logo_mbf.png');
-    return pw.MemoryImage(bytes.buffer.asUint8List());
+    final bytes = base64.decode(kLogoMbfBase64);
+    return pw.MemoryImage(bytes);
   } catch (_) {
     return null;
   }
