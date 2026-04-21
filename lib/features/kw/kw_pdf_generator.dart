@@ -166,12 +166,13 @@ class KwPdfGenerator {
     final taraPlast = d.plastIl * d.plastWagaJedn;
 
     pw.Widget chk(bool checked) => pw.Container(
-      width: 11, height: 11,
+      width: 12, height: 12,
+      alignment: pw.Alignment.center,
       decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5)),
-      child: checked ? pw.Center(child: pw.Text('X', style: sB9)) : pw.SizedBox(),
+      child: checked ? pw.Text('X', style: sB9, textAlign: pw.TextAlign.center) : pw.SizedBox(),
     );
 
-    String zwroty() => d.odmiany.isEmpty ? '' : d.odmiany.map((o) => '${o.zwrotPct}%').join(' / ');
+    bool hasZwroty() => d.odmiany.any((o) => o.zwrotPct > 0);
 
     final firstOdm    = d.odmiany.isNotEmpty ? d.odmiany.first : null;
     final przKod      = d.przeznaczenieKod.toUpperCase();
@@ -289,7 +290,7 @@ class KwPdfGenerator {
               // Wiersz 7: waga brutto
               _w3('7', 'WAGA SUROWCA BRUTTO', _n(d.wagaBrutto), pad, sB9, sB9),
 
-              // Wiersz 8: waga netto + zwroty
+              // Wiersz 8: waga netto + zwroty (tylko jeśli istnieją)
               pw.TableRow(children: [
                 pw.Container(padding: padH, child: pw.Text('8', style: sB9)),
                 pw.Container(padding: padH, child: pw.Text('WAGA SUROWCA NETTO', style: sB9)),
@@ -299,8 +300,8 @@ class KwPdfGenerator {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(_n(d.wagaNetto), style: sB9),
-                      if (zwroty().isNotEmpty)
-                        pw.Text('ZWROTY W %:  ${zwroty()}', style: sB9),
+                      if (hasZwroty())
+                        pw.Text('ZWROTY W %:', style: sB9),
                     ],
                   ),
                 ),
@@ -312,13 +313,20 @@ class KwPdfGenerator {
                 final o    = hasO ? d.odmiany[i] : null;
                 final lbl  = 'ODMIANA ${["I","II","III","IV"][i]}';
                 final nazwaTxt = (o != null && o.nazwa.isNotEmpty) ? '$lbl:  ${o.nazwa}' : lbl;
-                final skrzynTxt = hasO && (o!.drewIl > 0 || o.plastIl > 0)
-                    ? 'Il. skrzyń drew/plast:  ${o.drewIl}/${o.plastIl}'
-                    : '';
+
+                String prawyTxt = '';
+                if (hasO) {
+                  final skrzyny = (o!.drewIl > 0 || o.plastIl > 0)
+                      ? 'Il. skrzyń drew/plast:  ${o.drewIl}/${o.plastIl}'
+                      : '';
+                  final zwrot = o.zwrotPct > 0 ? 'Zwrot:  ${o.zwrotPct}%' : '';
+                  prawyTxt = [skrzyny, zwrot].where((s) => s.isNotEmpty).join('    ');
+                }
+
                 return pw.TableRow(children: [
                   pw.Container(padding: padH, child: pw.Text('${i + 9}', style: sB9)),
                   pw.Container(padding: padH, child: pw.Text(nazwaTxt, style: sB9)),
-                  pw.Container(padding: padH, child: pw.Text(skrzynTxt, style: sR9)),
+                  pw.Container(padding: padH, child: pw.Text(prawyTxt, style: sR9)),
                 ]);
               }),
             ],
@@ -515,7 +523,7 @@ class KwPdfGenerator {
         pw.Container(padding: pad, child: pw.Text(val, style: bs)),
       ]);
 
-  // Wiersz skrzyń: nr | opis | IL.: X  WAGA/szt: Y kg  TARA: Z kg
+  // Wiersz skrzyń: nr | opis | Ilość: X  Waga: Y kg  Tara: Z kg
   static pw.TableRow _w3skrzynie(String num, String desc,
       int il, double wagaJedn, double tara,
       pw.EdgeInsets pad, pw.TextStyle s, pw.TextStyle bs) =>
@@ -525,13 +533,13 @@ class KwPdfGenerator {
         pw.Container(
           padding: pad,
           child: pw.Row(children: [
-            pw.Text('IL.:  ', style: bs),
+            pw.Text('Ilość: ', style: s),
             pw.Text('$il', style: bs),
             pw.SizedBox(width: 12),
-            pw.Text('WAGA/szt:  ', style: s),
+            pw.Text('Waga: ', style: s),
             pw.Text('${wagaJedn.toStringAsFixed(0)} kg', style: bs),
             pw.SizedBox(width: 12),
-            pw.Text('TARA:  ', style: s),
+            pw.Text('Tara: ', style: s),
             pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
           ]),
         ),
