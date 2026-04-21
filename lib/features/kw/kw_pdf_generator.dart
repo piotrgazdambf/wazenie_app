@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../../core/pdf/logo_mbf_b64.dart';
 
 // ── Modele danych ─────────────────────────────────────────────────────────────
 
@@ -140,6 +142,10 @@ class KwPdfGenerator {
   static Future<Uint8List> generate(KwPdfData d) async {
     final doc = pw.Document();
 
+    // Logo MBF
+    final logoBytes = base64.decode(kLogoMbfBase64);
+    final logoImage = pw.MemoryImage(logoBytes);
+
     // Czcionki z obsługą polskich znaków
     final fontR = await PdfGoogleFonts.notoSansRegular();
     final fontB = await PdfGoogleFonts.notoSansBold();
@@ -203,14 +209,7 @@ class KwPdfGenerator {
                   height: 44,
                   padding: pad,
                   child: pw.Center(
-                    child: pw.Text(
-                      'MBF',
-                      style: pw.TextStyle(
-                        font: fontB,
-                        fontSize: 22,
-                        color: PdfColor.fromHex('#16a34a'),
-                      ),
-                    ),
+                    child: pw.Image(logoImage, fit: pw.BoxFit.contain),
                   ),
                 ),
                 pw.Container(
