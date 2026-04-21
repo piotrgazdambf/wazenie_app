@@ -266,177 +266,185 @@ class _MagazynSummaryCard extends StatelessWidget {
 
   const _MagazynSummaryCard({required this.entries});
 
+  static const _columns = [
+    (kod: 'P', label: 'PRZECIER', color: Color(0xFF2E7D32)),
+    (kod: 'S', label: 'SOK',      color: Color(0xFFE65100)),
+    (kod: 'O', label: 'OBIERANIE',color: Color(0xFF6A1B9A)),
+    (kod: 'F', label: 'ŚWIEŻE',   color: Color(0xFF0277BD)),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    // Grupuj po owoc (znormalizowany)
-    final Map<String, Map<String, double>> fruitOdmianaKg = {};
+    // Grupuj: przeznaczenie_kod → odmiana → kg
+    final Map<String, Map<String, double>> byPrzezn = {};
+    for (final col in _columns) {
+      byPrzezn[col.kod] = {};
+    }
 
     for (final e in entries) {
-      final owoc = e.owoc.trim().isEmpty ? 'brak' : e.owoc.trim();
-      final odmiana = e.odmiana.trim().isEmpty ? '(inne)' : e.odmiana.trim();
-      fruitOdmianaKg.putIfAbsent(owoc, () => {});
-      fruitOdmianaKg[owoc]![odmiana] = (fruitOdmianaKg[owoc]![odmiana] ?? 0) + e.kgValue;
+      final przKod = e.przeznaczenie.length == 1
+          ? e.przeznaczenie.toUpperCase()
+          : _extractKod(e.przeznaczenie);
+      if (!byPrzezn.containsKey(przKod)) continue;
+      final odmiana = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
+      byPrzezn[przKod]![odmiana] = (byPrzezn[przKod]![odmiana] ?? 0) + e.kgValue;
     }
 
-    // Kategoryzuj owoce
-    final appleMap  = <String, Map<String, double>>{};
-    final pearMap   = <String, Map<String, double>>{};
-    final ekoMap    = <String, Map<String, double>>{};
-    final otherMap  = <String, Map<String, double>>{};
-
-    for (final entry in fruitOdmianaKg.entries) {
-      final key = entry.key.toLowerCase();
-      if (key == 'jabłko') {
-        appleMap[entry.key] = entry.value;
-      } else if (key == 'gruszka') {
-        pearMap[entry.key] = entry.value;
-      } else if (key.contains('eko')) {
-        ekoMap[entry.key] = entry.value;
-      } else {
-        otherMap[entry.key] = entry.value;
-      }
-    }
-
-    final groups = <({String title, Map<String, Map<String, double>> data, bool showOdmiany})>[
-      (title: 'Jabłko',  data: appleMap, showOdmiany: true),
-      (title: 'Gruszka', data: pearMap,  showOdmiany: true),
-      (title: 'EKO',     data: ekoMap,   showOdmiany: true),
-    ];
-
-    double totalAll = entries.fold(0.0, (a, e) => a + e.kgValue);
+    final totalAll = entries.fold(0.0, (a, e) => a + e.kgValue);
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text(
-                  'PODSUMOWANIE MAGAZYNU',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.5),
-                ),
-                const Spacer(),
-                Text(
-                  '${totalAll.toStringAsFixed(0)} kg',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryMid),
-                ),
-              ],
-            ),
+            // Nagłówek
+            Row(children: [
+              const Text('PODSUMOWANIE MAGAZYNU',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+              const Spacer(),
+              Text('${_fmt(totalAll)} kg',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryMid)),
+            ]),
             const SizedBox(height: 10),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
 
-            // Grupy z odmianami
-            ...groups.map((g) {
-              final totalKg = g.data.values.fold<double>(
-                0,
-                (a, odMap) => a + odMap.values.fold(0, (b, v) => b + v),
-              );
-              if (totalKg <= 0) return const SizedBox.shrink();
+            // 4 kolumny przeznaczenia
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _columns.map((col) {
+                final data = byPrzezn[col.kod] ?? {};
+                final sorted = data.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value));
+                final total = data.values.fold(0.0, (a, v) => a + v);
 
-              final allOdmianyKg = <String, double>{};
-              for (final odMap in g.data.values) {
-                for (final od in odMap.entries) {
-                  allOdmianyKg[od.key] = (allOdmianyKg[od.key] ?? 0) + od.value;
-                }
-              }
-              final sortedOdmiany = allOdmianyKg.entries.toList()
-                ..sort((a, b) => b.value.compareTo(a.value));
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          g.title,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Nagłówek kolumny
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: col.color,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                          ),
+                          child: Text(col.label,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                              textAlign: TextAlign.center),
                         ),
-                      ),
-                      Text(
-                        '${_fmt(totalKg)} kg',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                    ],
+                        // Nagłówek tabeli
+                        Container(
+                          decoration: BoxDecoration(color: col.color.withAlpha(25)),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          child: Row(children: [
+                            const Expanded(child: Text('ODMIANA', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700))),
+                            const Text('kg', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)),
+                          ]),
+                        ),
+                        // Wiersze odmian
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: col.color.withAlpha(60), width: 0.5),
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
+                          ),
+                          child: sorted.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: Text('—', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary), textAlign: TextAlign.center),
+                                )
+                              : Column(
+                                  children: [
+                                    ...sorted.map((od) => _OdmianaRow(
+                                      odmiana: od.key,
+                                      kg: od.value,
+                                      total: total,
+                                      color: col.color,
+                                    )),
+                                    // Suma
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: col.color.withAlpha(20),
+                                        border: Border(top: BorderSide(color: col.color.withAlpha(60), width: 0.5)),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                      child: Row(children: [
+                                        const Expanded(child: Text('SUMA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+                                        Text('${_fmt(total)} kg', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                                      ]),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  ...sortedOdmiany.map((od) {
-                    final ratio = totalKg <= 0 ? 0.0 : (od.value / totalKg).clamp(0.0, 1.0);
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 16, bottom: 4),
-                      child: Row(
-                        children: [
-                          const Text('├ ', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                          SizedBox(
-                            width: 90,
-                            child: Text(
-                              od.key,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          SizedBox(
-                            width: 60,
-                            child: Text(
-                              '${_fmt(od.value)} kg',
-                              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: LinearProgressIndicator(
-                              value: ratio,
-                              minHeight: 6,
-                              color: AppTheme.primaryMid,
-                              backgroundColor: AppTheme.primaryMid.withAlpha(30),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 4),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                ],
-              );
-            }),
-
-            // Inne owoce
-            ...otherMap.entries.map((entry) {
-              final totalKg = entry.value.values.fold(0.0, (a, v) => a + v);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _cap(entry.key),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    Text(
-                      '${_fmt(totalKg)} kg',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                );
+              }).toList(),
+            ),
           ],
         ),
       ),
     );
   }
 
-  String _fmt(double v) => v.toStringAsFixed(0);
-  String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  static String _extractKod(String przeznaczenie) {
+    final p = przeznaczenie.trim().toUpperCase();
+    if (p.startsWith('P')) return 'P';
+    if (p.startsWith('S')) return 'S';
+    if (p.startsWith('O')) return 'O';
+    if (p.startsWith('F') || p.startsWith('Ś')) return 'F';
+    return p.isNotEmpty ? p[0] : '';
+  }
+
+  static String _fmt(double v) => v.toStringAsFixed(0);
+}
+
+class _OdmianaRow extends StatelessWidget {
+  final String odmiana;
+  final double kg;
+  final double total;
+  final Color color;
+
+  const _OdmianaRow({required this.odmiana, required this.kg, required this.total, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = total <= 0 ? 0.0 : (kg / total).clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: color.withAlpha(30), width: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(odmiana,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11)),
+            ),
+            const SizedBox(width: 4),
+            Text('${kg.toStringAsFixed(0)} kg',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+          ]),
+          const SizedBox(height: 3),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 4,
+              color: color,
+              backgroundColor: color.withAlpha(25),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Karta lotu ─────────────────────────────────────────────────────────────────
