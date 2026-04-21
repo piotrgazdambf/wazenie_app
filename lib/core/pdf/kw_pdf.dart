@@ -1,27 +1,26 @@
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-// ── Kolory MBF ────────────────────────────────────────────────────────────────
+// ── Kolory ────────────────────────────────────────────────────────────────────
 
-const _navy   = PdfColor.fromInt(0xFF0D2137);
-const _mid    = PdfColor.fromInt(0xFF1A4566);
-const _green  = PdfColor.fromInt(0xFF16A34A);
-const _orange = PdfColor.fromInt(0xFFF59E0B);
-const _grey   = PdfColor.fromInt(0xFF6B7280);
-const _light  = PdfColor.fromInt(0xFFEEF2F7);
+const _black  = PdfColors.black;
+const _white  = PdfColors.white;
+const _red    = PdfColor.fromInt(0xFFCC0000);
+const _grey   = PdfColor.fromInt(0xFF666666);
+const _bgGrey = PdfColor.fromInt(0xFFEEEEEE);
 
 // ── Główna funkcja drukowania ─────────────────────────────────────────────────
 
-/// Drukuje / podgląd karty ważenia na podstawie dokumentu Firestore.
-/// [data] — mapa z collection `deliveries`.
 Future<void> printKwCard(Map<String, dynamic> data) async {
-  final pdf = pw.Document();
+  final pdf   = pw.Document();
+  final logo  = await _loadLogo();
 
   pdf.addPage(pw.Page(
     pageFormat: PdfPageFormat.a4,
-    margin: const pw.EdgeInsets.all(24),
-    build: (ctx) => _buildPage(ctx, data),
+    margin: const pw.EdgeInsets.fromLTRB(20, 20, 20, 20),
+    build: (ctx) => _buildPage(ctx, data, logo),
   ));
 
   await Printing.layoutPdf(
@@ -30,30 +29,35 @@ Future<void> printKwCard(Map<String, dynamic> data) async {
   );
 }
 
+Future<pw.ImageProvider?> _loadLogo() async {
+  try {
+    final bytes = await rootBundle.load('assets/images/logo_mbf.png');
+    return pw.MemoryImage(bytes.buffer.asUint8List());
+  } catch (_) {
+    return null;
+  }
+}
+
 // ── Budowanie strony ──────────────────────────────────────────────────────────
 
-pw.Widget _buildPage(pw.Context ctx, Map<String, dynamic> d) {
-  final isKwg   = d['is_kwg'] == true;
-  final lot      = d['lot']      as String? ?? '';
-  final data     = d['data']     as String? ?? '';
-  final nrDost   = d['nr_dostawy'] as String? ?? '';
-  final dostawca = d['dostawca'] as String? ?? '';
+pw.Widget _buildPage(pw.Context ctx, Map<String, dynamic> d, pw.ImageProvider? logo) {
+  final isKwg    = d['is_kwg'] == true;
+  final lot      = d['lot']         as String? ?? '';
+  final data     = d['data']        as String? ?? '';
+  final nrDost   = d['nr_dostawy']  as String? ?? '';
+  final dostawca = d['dostawca']    as String? ?? '';
   final dostawKod= d['dostawca_kod'] as String? ?? '';
-  final owoc     = _cap(d['owoc'] as String? ?? '');
-  final odmiana  = d['odmiana']  as String? ?? '';
+  final owoc     = _cap(d['owoc']   as String? ?? '');
+  final odmiana  = d['odmiana']     as String? ?? '';
   final przezn   = d['przeznaczenie'] as String? ?? '';
-  final przKod   = d['przeznaczenie_kod'] as String? ?? '';
-  final wagaNetto= d['waga_netto'] as String? ?? '';
+  final wagaNetto= d['waga_netto']  as String? ?? '0';
+  final nrPojazdu= d['nr_pojazdu']  as String? ?? '';
+  final nrTel    = d['nr_telefonu'] as String? ?? '';
 
-  // Skrzynie
   final drewIl   = _intStr(d['skrzynie_drew']);
   final plastIl  = _intStr(d['skrzynie_plast']);
-  final drewMbf  = _intStr(d['skrzynie_mbf_drew']);
-  final plastMbf = _intStr(d['skrzynie_mbf_plast']);
   final drewWg   = _dblStr(d['drew_waga_jedn']);
   final plastWg  = _dblStr(d['plast_waga_jedn']);
-
-  // Ważenia (tylko KW)
   final wagaBrutto = _dblStr(d['waga_brutto']);
   final a1Zal    = _dblStr(d['waga_a1_zal']);
   final a1Roz    = _dblStr(d['waga_a1_roz']);
@@ -61,327 +65,472 @@ pw.Widget _buildPage(pw.Context ctx, Map<String, dynamic> d) {
   final a2Roz    = _dblStr(d['waga_a2_roz']);
   final hasA2    = (d['waga_a2_zal'] != null && d['waga_a2_zal'] != 0);
 
-  // Parametry
-  final brix     = d['brix']     as String? ?? '';
-  final odpad    = d['odpad']    as String? ?? '';
-  final tward    = d['twardosc'] as String? ?? '';
-  final kaliber  = d['kaliber']  as String? ?? '';
+  final brix     = d['brix']      as String? ?? '';
+  final odpad    = d['odpad']     as String? ?? '';
+  final stanOpak = d['stan_opakowania'] as String? ?? 'DOBRY';
+  final stanAuto = d['stan_samochodu']  as String? ?? 'STAN DOBRY';
   final zwrot    = d['zwrot_pct'] as String? ?? '';
-  final stanOpak = d['stan_opakowania'] as String? ?? '';
-  final stanAuto = d['stan_samochodu']  as String? ?? '';
 
-  final hasParams = brix.isNotEmpty || odpad.isNotEmpty || tward.isNotEmpty
-      || kaliber.isNotEmpty || zwrot.isNotEmpty;
+  final tara1    = _dblStr(d['tara_drew']);
+  final tara2    = _dblStr(d['tara_plast']);
+
+  // oblicz wagę tary skrzyń
+  final drewTara  = tara1.isNotEmpty ? tara1 : '0';
+  final plastTara = tara2.isNotEmpty ? tara2 : '0';
+
+  final doRozliczenia = '$wagaNetto kg';
 
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
       // ── Nagłówek ────────────────────────────────────────────────────────────
-      _Header(isKwg: isKwg),
-      pw.SizedBox(height: 10),
+      _buildHeader(logo, isKwg),
+      pw.SizedBox(height: 6),
 
-      // ── LOT + dane dostawy ──────────────────────────────────────────────────
-      _SectionBox(
-        title: 'DANE DOSTAWY',
-        child: pw.Column(
-          children: [
-            _Row2('LOT', lot, bold: true),
-            _Row2('Data', data),
-            _Row2('Nr dostawy', nrDost),
-            _Row2('Dostawca', '$dostawKod — $dostawca'),
-            _Row2('Owoc', owoc),
-            if (odmiana.isNotEmpty) _Row2('Odmiana', odmiana),
-            _Row2('Przeznaczenie', '$przezn ($przKod)'),
-          ],
-        ),
+      // ── Tabela danych dostawy ────────────────────────────────────────────────
+      _buildInfoTable(data, '$dostawKod — $dostawca', nrDost, nrPojazdu, nrTel, owoc, odmiana, przezn, lot),
+      pw.SizedBox(height: 6),
+
+      // ── Tabela główna (ważenia + skrzynie + odmiany) ─────────────────────────
+      _buildMainTable(
+        isKwg: isKwg,
+        a1Zal: a1Zal, a1Roz: a1Roz,
+        a2Zal: a2Zal, a2Roz: a2Roz, hasA2: hasA2,
+        wagaBrutto: wagaBrutto, wagaNetto: wagaNetto,
+        drewIl: drewIl, plastIl: plastIl,
+        drewWg: drewWg, plastWg: plastWg,
+        drewTara: drewTara, plastTara: plastTara,
+        odmiana: odmiana, zwrot: zwrot,
+        d: d,
       ),
-      pw.SizedBox(height: 8),
+      pw.SizedBox(height: 6),
 
-      // ── Skrzynie ─────────────────────────────────────────────────────────────
-      _SectionBox(
-        title: 'SKRZYNIE',
-        child: pw.Column(
-          children: [
-            _Row4('Drewniane', drewIl, 'Plastikowe', plastIl),
-            if (drewWg.isNotEmpty || plastWg.isNotEmpty)
-              _Row4('Waga drew. [kg/szt]', drewWg, 'Waga plast. [kg/szt]', plastWg),
-            if (drewMbf != '0' || plastMbf != '0')
-              _Row4('MBF drewniane', drewMbf, 'MBF plastikowe', plastMbf),
-          ],
+      // ── Parametry + rozliczenie ──────────────────────────────────────────────
+      _buildParamsRow(brix, odpad, odmiana, doRozliczenia),
+      pw.SizedBox(height: 6),
+
+      // ── Stan opakowania + samochodu + podpis ─────────────────────────────────
+      _buildStanRow(stanOpak, stanAuto),
+    ],
+  );
+}
+
+// ── NAGŁÓWEK ─────────────────────────────────────────────────────────────────
+
+pw.Widget _buildHeader(pw.ImageProvider? logo, bool isKwg) {
+  return pw.Container(
+    decoration: pw.BoxDecoration(border: pw.Border.all(color: _black, width: 1)),
+    child: pw.Row(
+      children: [
+        // Logo
+        pw.Container(
+          width: 80,
+          height: 40,
+          padding: const pw.EdgeInsets.all(4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(right: pw.BorderSide(color: _black, width: 1)),
+          ),
+          child: logo != null
+              ? pw.Image(logo, fit: pw.BoxFit.contain)
+              : pw.Text('MBF', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: _red)),
         ),
-      ),
-      pw.SizedBox(height: 8),
 
-      // ── Ważenia (tylko KW, nie KWG) ──────────────────────────────────────────
-      if (!isKwg) ...[
-        _SectionBox(
-          title: 'WAŻENIA',
+        // Tytuł
+        pw.Expanded(
+          child: pw.Container(
+            height: 40,
+            alignment: pw.Alignment.center,
+            child: pw.Text(
+              isKwg ? 'KARTA WAŻENIA G (KWG)' : 'KARTA WAŻENIA (KW)',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+        ),
+
+        // Wydanie / Data / Symbol
+        pw.Container(
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(left: pw.BorderSide(color: _black, width: 1)),
+          ),
           child: pw.Column(
             children: [
-              _Row4('A1 Założeniowe [kg]', a1Zal, 'A1 Rozliczeniowe [kg]', a1Roz),
-              if (hasA2)
-                _Row4('A2 Założeniowe [kg]', a2Zal, 'A2 Rozliczeniowe [kg]', a2Roz),
-              pw.SizedBox(height: 4),
-              _Row2('Brutto łącznie', '$wagaBrutto kg', bold: true),
+              _headerCell('Wydanie nr:', '3', width: 70),
+              _headerCell('Z dnia:', '12.02.2024', width: 70),
             ],
           ),
         ),
-        pw.SizedBox(height: 8),
-      ],
-
-      // ── Waga netto ────────────────────────────────────────────────────────────
-      pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: pw.BoxDecoration(
-          color: _navy,
-          borderRadius: pw.BorderRadius.circular(6),
+        pw.Container(
+          width: 50,
+          height: 40,
+          alignment: pw.Alignment.center,
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(left: pw.BorderSide(color: _black, width: 1)),
+          ),
+          child: pw.Text('I-07/A', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
         ),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      ],
+    ),
+  );
+}
+
+pw.Widget _headerCell(String label, String value, {required double width}) {
+  return pw.Container(
+    width: width,
+    height: 20,
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    decoration: const pw.BoxDecoration(
+      border: pw.Border(bottom: pw.BorderSide(color: _black, width: 0.5)),
+    ),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      mainAxisAlignment: pw.MainAxisAlignment.center,
+      children: [
+        pw.Text(label, style: pw.TextStyle(fontSize: 6, color: _grey)),
+        pw.Text(value, style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold)),
+      ],
+    ),
+  );
+}
+
+// ── TABELA DANYCH ─────────────────────────────────────────────────────────────
+
+pw.Widget _buildInfoTable(String data, String dostawca, String nrDost,
+    String nrPojazdu, String nrTel, String owoc, String odmiana, String przezn, String lot) {
+  return pw.Table(
+    border: pw.TableBorder.all(color: _black, width: 0.5),
+    columnWidths: {
+      0: const pw.FixedColumnWidth(110),
+      1: const pw.FlexColumnWidth(),
+    },
+    children: [
+      _infoRow('DATA', data),
+      _infoRow('DOSTAWCA', dostawca),
+      _infoRow('NUMER DOSTAWY', nrDost),
+      _infoRow('OWOC / ODMIANA', odmiana.isNotEmpty ? '$owoc / $odmiana' : owoc),
+      _infoRow('PRZEZNACZENIE', przezn),
+      _infoRow('NUMER POJAZDU', nrPojazdu),
+      _infoRow('NUMER TELEFONU', nrTel),
+      _infoRow('LOT', lot, bold: true),
+    ],
+  );
+}
+
+pw.TableRow _infoRow(String label, String value, {bool bold = false}) {
+  return pw.TableRow(children: [
+    pw.Container(
+      color: _bgGrey,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      child: pw.Text(label, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+    ),
+    pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      child: pw.Text(value, style: pw.TextStyle(fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+    ),
+  ]);
+}
+
+// ── TABELA GŁÓWNA ─────────────────────────────────────────────────────────────
+
+pw.Widget _buildMainTable({
+  required bool isKwg,
+  required String a1Zal, required String a1Roz,
+  required String a2Zal, required String a2Roz, required bool hasA2,
+  required String wagaBrutto, required String wagaNetto,
+  required String drewIl, required String plastIl,
+  required String drewWg, required String plastWg,
+  required String drewTara, required String plastTara,
+  required String odmiana, required String zwrot,
+  required Map<String, dynamic> d,
+}) {
+  final rows = <pw.TableRow>[];
+
+  int nr = 1;
+
+  if (!isKwg) {
+    rows.add(_mainRow(nr++, 'Waga załadowanego auta I', a1Zal.isNotEmpty ? '$a1Zal kg' : ''));
+    rows.add(_mainRow(nr++, 'Waga rozładowanego auta I', a1Roz.isNotEmpty ? '$a1Roz kg' : ''));
+    if (hasA2) {
+      rows.add(_mainRow(nr++, 'Waga załadowanego auta II', a2Zal.isNotEmpty ? '$a2Zal kg' : ''));
+      rows.add(_mainRow(nr++, 'Waga rozładowanego auta II', a2Roz.isNotEmpty ? '$a2Roz kg' : ''));
+    } else {
+      rows.add(_mainRow(nr++, 'Waga załadowanego auta II', ''));
+      rows.add(_mainRow(nr++, 'Waga rozładowanego auta II', ''));
+    }
+  }
+
+  // Skrzynie
+  rows.add(_mainRowSkrzynie(nr++,
+    'Ilość skrzyń drewnianych',
+    drewIl, drewWg, drewTara,
+  ));
+  rows.add(_mainRowSkrzynie(nr++,
+    'Ilość skrzyń plastikowych',
+    plastIl, plastWg, plastTara,
+  ));
+
+  // Wagi
+  rows.add(_mainRow(nr++, 'WAGA SUROWCA BRUTTO', wagaBrutto.isNotEmpty ? '$wagaBrutto kg' : '0 kg', bold: true));
+  rows.add(_mainRowNetto(nr++, wagaNetto, zwrot));
+
+  // Odmiany
+  final odmianyList = _parseOdmiany(d);
+  for (int i = 0; i < 4; i++) {
+    final odm = i < odmianyList.length ? odmianyList[i] : ('', '', '');
+    rows.add(_mainRowOdmiana(nr++, 'ODMIANA ${_roman(i + 1)}', odm.$1, odm.$2, odm.$3));
+  }
+
+  return pw.Table(
+    border: pw.TableBorder.all(color: _black, width: 0.5),
+    columnWidths: {
+      0: const pw.FixedColumnWidth(22),
+      1: const pw.FlexColumnWidth(),
+      2: const pw.FixedColumnWidth(120),
+    },
+    children: rows,
+  );
+}
+
+pw.TableRow _mainRow(int nr, String label, String value, {bool bold = false}) {
+  return pw.TableRow(children: [
+    _cell(nr.toString(), center: true, bg: _bgGrey),
+    _cell(label, bold: bold),
+    _cell(value, bold: bold),
+  ]);
+}
+
+pw.TableRow _mainRowSkrzynie(int nr, String label, String il, String wg, String tara) {
+  return pw.TableRow(children: [
+    _cell(nr.toString(), center: true, bg: _bgGrey),
+    _cell(label),
+    pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: pw.Row(children: [
+        pw.Text('IL.: ', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+        pw.Text(il, style: pw.TextStyle(fontSize: 8)),
+        pw.SizedBox(width: 10),
+        pw.Text('WAGA/SZT: ', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+        pw.Text(wg.isNotEmpty ? '$wg kg' : '', style: pw.TextStyle(fontSize: 8)),
+        pw.SizedBox(width: 10),
+        pw.Text('TARA: ', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+        pw.Text(tara, style: pw.TextStyle(fontSize: 8)),
+      ]),
+    ),
+  ]);
+}
+
+pw.TableRow _mainRowNetto(int nr, String netto, String zwrot) {
+  return pw.TableRow(children: [
+    _cell(nr.toString(), center: true, bg: _bgGrey),
+    _cell('WAGA SUROWCA NETTO', bold: true),
+    pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text('$netto kg', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+          if (zwrot.isNotEmpty)
+            pw.Text('ZWROTY W %: $zwrot%', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+        ],
+      ),
+    ),
+  ]);
+}
+
+pw.TableRow _mainRowOdmiana(int nr, String label, String nazwa, String skrzynie, String waga) {
+  return pw.TableRow(children: [
+    _cell(nr.toString(), center: true, bg: _bgGrey),
+    _cell(label, bold: true),
+    pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: pw.Row(children: [
+        pw.Text(nazwa, style: pw.TextStyle(fontSize: 8)),
+        if (skrzynie.isNotEmpty) ...[
+          pw.SizedBox(width: 8),
+          pw.Text('Il. skrzyń: ', style: pw.TextStyle(fontSize: 7, color: _grey)),
+          pw.Text(skrzynie, style: pw.TextStyle(fontSize: 8)),
+        ],
+        if (waga.isNotEmpty) ...[
+          pw.SizedBox(width: 8),
+          pw.Text('Waga: ', style: pw.TextStyle(fontSize: 7, color: _grey)),
+          pw.Text(waga, style: pw.TextStyle(fontSize: 8)),
+        ],
+      ]),
+    ),
+  ]);
+}
+
+// ── PARAMETRY + ROZLICZENIE ───────────────────────────────────────────────────
+
+pw.Widget _buildParamsRow(String brix, String odpad, String odmiana, String doRozliczenia) {
+  return pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      // Lewa: BRIX + ODPAD
+      pw.Expanded(
+        child: pw.Table(
+          border: pw.TableBorder.all(color: _black, width: 0.5),
+          columnWidths: {
+            0: const pw.FixedColumnWidth(22),
+            1: const pw.FlexColumnWidth(),
+            2: const pw.FixedColumnWidth(60),
+          },
           children: [
-            pw.Text(
-              isKwg ? 'WAGA NETTO (wg dostawcy)' : 'WAGA NETTO',
-              style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 11,
-                  fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Text(
-              '$wagaNetto kg',
-              style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold),
-            ),
+            pw.TableRow(children: [
+              _cell('1', center: true, bg: _bgGrey),
+              _cell('BRIX'),
+              _cell(brix),
+            ]),
+            pw.TableRow(children: [
+              _cell('2', center: true, bg: _bgGrey),
+              _cell('ODPAD w %'),
+              _cell(odpad.isNotEmpty ? '$odpad%' : ''),
+            ]),
           ],
         ),
       ),
-
-      // ── Parametry jakości ─────────────────────────────────────────────────────
-      if (hasParams) ...[
-        pw.SizedBox(height: 8),
-        _SectionBox(
-          title: 'PARAMETRY JAKOŚCI',
-          child: pw.Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              if (brix.isNotEmpty) _ParamBox('BRIX', brix, _mid),
-              if (odpad.isNotEmpty) _ParamBox('ODPAD', '$odpad%', _orange),
-              if (tward.isNotEmpty) _ParamBox('TWARDOŚĆ', tward, _green),
-              if (kaliber.isNotEmpty) _ParamBox('KALIBER', '$kaliber%', _mid),
-              if (zwrot.isNotEmpty) _ParamBox('ZWROT', '$zwrot%', PdfColors.red700),
-            ],
-          ),
+      pw.SizedBox(width: 8),
+      // Prawa: Odmiana + Do rozliczenia
+      pw.Expanded(
+        child: pw.Table(
+          border: pw.TableBorder.all(color: _black, width: 0.5),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(),
+            1: const pw.FixedColumnWidth(70),
+          },
+          children: [
+            pw.TableRow(children: [
+              pw.Container(
+                color: _bgGrey,
+                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                child: pw.Text('Odmiana:', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              ),
+              _cell(odmiana),
+            ]),
+            pw.TableRow(children: [
+              pw.Container(
+                color: _bgGrey,
+                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                child: pw.Text('Do rozliczenia z dostawcą:', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              ),
+              _cell(doRozliczenia, bold: true),
+            ]),
+          ],
         ),
-      ],
-
-      // ── Stan opakowania + samochodu ───────────────────────────────────────────
-      if (stanOpak.isNotEmpty || stanAuto.isNotEmpty) ...[
-        pw.SizedBox(height: 8),
-        _SectionBox(
-          title: 'UWAGI',
-          child: pw.Column(
-            children: [
-              if (stanOpak.isNotEmpty) _Row2('Stan opakowania', stanOpak),
-              if (stanAuto.isNotEmpty) _Row2('Stan samochodu', stanAuto),
-            ],
-          ),
-        ),
-      ],
-
-      pw.Spacer(),
-
-      // ── Stopka ───────────────────────────────────────────────────────────────
-      pw.Divider(color: _grey, thickness: 0.5),
-      pw.Text(
-        'MBF S.A. | System Ważenia | Wydruk automatyczny',
-        style: pw.TextStyle(fontSize: 8, color: _grey),
-        textAlign: pw.TextAlign.center,
       ),
     ],
   );
 }
 
-// ── Nagłówek dokumentu ────────────────────────────────────────────────────────
+// ── STAN OPAKOWANIA + SAMOCHODU ───────────────────────────────────────────────
 
-class _Header extends pw.StatelessWidget {
-  final bool isKwg;
-  _Header({required this.isKwg});
+pw.Widget _buildStanRow(String stanOpak, String stanAuto) {
+  final opakDobry    = stanOpak.toUpperCase().contains('DOBRY');
+  final autoDobry    = stanAuto.toUpperCase().contains('DOBRY');
 
-  @override
-  pw.Widget build(pw.Context context) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: pw.BoxDecoration(
-        gradient: const pw.LinearGradient(
-          colors: [_navy, _mid],
-          begin: pw.Alignment.topLeft,
-          end: pw.Alignment.bottomRight,
-        ),
-        borderRadius: pw.BorderRadius.circular(8),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Column(
+  return pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      // Stan opakowania
+      pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: _black, width: 0.5)),
+          child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('MBF S.A.',
-                  style: pw.TextStyle(
-                      color: PdfColors.white,
-                      fontSize: 10,
-                      fontWeight: pw.FontWeight.bold,
-                      letterSpacing: 1.5)),
-              pw.Text('System Ważenia Surowca',
-                  style: pw.TextStyle(color: PdfColors.grey300, fontSize: 9)),
+              pw.Text('STAN OPAKOWANIA:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              _checkRow('DOBRY', opakDobry, color: _red),
+              _checkRow('USZKODZONY', !opakDobry),
+              pw.SizedBox(height: 10),
+              pw.Text('(szt.)', style: pw.TextStyle(fontSize: 7, color: _grey)),
             ],
           ),
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: pw.BoxDecoration(
-              color: isKwg ? _orange : _green,
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Text(
-              isKwg ? 'KARTA WAŻENIA G (KWG)' : 'KARTA WAŻENIA (KW)',
-              style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 12,
-                  fontWeight: pw.FontWeight.bold),
-            ),
-          ),
-        ],
+        ),
       ),
-    );
-  }
+      pw.SizedBox(width: 8),
+      // Stan samochodu + podpis
+      pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: _black, width: 0.5)),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('STAN SAMOCHODU:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              _checkRow('STAN DOBRY', autoDobry, color: _red),
+              _checkRow('STAN ZŁY', !autoDobry),
+              pw.SizedBox(height: 10),
+              pw.Text('PODPIS: ___________________________',
+                  style: pw.TextStyle(fontSize: 8)),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
-// ── Sekcja z tytułem ─────────────────────────────────────────────────────────
-
-class _SectionBox extends pw.StatelessWidget {
-  final String title;
-  final pw.Widget child;
-  _SectionBox({required this.title, required this.child});
-
-  @override
-  pw.Widget build(pw.Context context) {
-    return pw.Container(
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: _light, width: 1),
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: const pw.BoxDecoration(
-              color: _light,
-              borderRadius: pw.BorderRadius.only(
-                topLeft: pw.Radius.circular(5),
-                topRight: pw.Radius.circular(5),
-              ),
-            ),
-            child: pw.Text(title,
-                style: pw.TextStyle(
-                    fontSize: 8,
-                    fontWeight: pw.FontWeight.bold,
-                    color: _grey,
-                    letterSpacing: 1.2)),
-          ),
-          pw.Padding(
-            padding: const pw.EdgeInsets.all(10),
-            child: child,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Wiersz 2-kolumnowy ────────────────────────────────────────────────────────
-
-pw.Widget _Row2(String label, String value, {bool bold = false}) {
+pw.Widget _checkRow(String label, bool checked, {PdfColor? color}) {
   return pw.Padding(
-    padding: const pw.EdgeInsets.only(bottom: 3),
+    padding: const pw.EdgeInsets.only(bottom: 4),
     child: pw.Row(
       children: [
-        pw.SizedBox(
-          width: 130,
-          child: pw.Text(label,
-              style: pw.TextStyle(fontSize: 9, color: _grey)),
+        pw.Container(
+          width: 12,
+          height: 12,
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: _black, width: 0.8)),
+          alignment: pw.Alignment.center,
+          child: checked
+              ? pw.Text('✕', style: pw.TextStyle(fontSize: 9, color: color ?? _black, fontWeight: pw.FontWeight.bold))
+              : pw.SizedBox(),
         ),
-        pw.Expanded(
-          child: pw.Text(value,
-              style: pw.TextStyle(
-                  fontSize: 10,
-                  fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-        ),
+        pw.SizedBox(width: 6),
+        pw.Text(label, style: pw.TextStyle(
+          fontSize: 8,
+          fontWeight: pw.FontWeight.bold,
+          color: checked ? (color ?? _black) : _black,
+        )),
       ],
     ),
   );
 }
 
-// ── Wiersz 4-kolumnowy (dwa pola obok siebie) ─────────────────────────────────
+// ── POMOCNICZE ────────────────────────────────────────────────────────────────
 
-pw.Widget _Row4(String l1, String v1, String l2, String v2) {
-  return pw.Padding(
-    padding: const pw.EdgeInsets.only(bottom: 3),
-    child: pw.Row(
-      children: [
-        pw.SizedBox(
-          width: 130,
-          child: pw.Text(l1, style: pw.TextStyle(fontSize: 9, color: _grey)),
-        ),
-        pw.SizedBox(
-          width: 60,
-          child: pw.Text(v1, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-        ),
-        pw.SizedBox(width: 16),
-        pw.SizedBox(
-          width: 130,
-          child: pw.Text(l2, style: pw.TextStyle(fontSize: 9, color: _grey)),
-        ),
-        pw.Expanded(
-          child: pw.Text(v2, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-        ),
-      ],
-    ),
-  );
-}
-
-// ── Chip parametru jakości ────────────────────────────────────────────────────
-
-pw.Widget _ParamBox(String label, String value, PdfColor color) {
+pw.Widget _cell(String text, {bool bold = false, bool center = false, PdfColor? bg}) {
   return pw.Container(
-    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: pw.BoxDecoration(
-      color: PdfColor(color.red, color.green, color.blue, 0.08),
-      border: pw.Border.all(
-          color: PdfColor(color.red, color.green, color.blue, 0.4)),
-      borderRadius: pw.BorderRadius.circular(6),
-    ),
-    child: pw.Column(
-      mainAxisSize: pw.MainAxisSize.min,
-      children: [
-        pw.Text(label,
-            style: pw.TextStyle(
-                fontSize: 7,
-                fontWeight: pw.FontWeight.bold,
-                color: color,
-                letterSpacing: 0.5)),
-        pw.Text(value,
-            style: pw.TextStyle(
-                fontSize: 13,
-                fontWeight: pw.FontWeight.bold,
-                color: color)),
-      ],
+    color: bg,
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+    alignment: center ? pw.Alignment.center : pw.Alignment.centerLeft,
+    child: pw.Text(
+      text,
+      style: pw.TextStyle(
+        fontSize: 8,
+        fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+      ),
     ),
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+String _roman(int n) {
+  const r = ['I', 'II', 'III', 'IV'];
+  return n <= r.length ? r[n - 1] : n.toString();
+}
+
+List<(String, String, String)> _parseOdmiany(Map<String, dynamic> d) {
+  final result = <(String, String, String)>[];
+  for (int i = 1; i <= 4; i++) {
+    final nazwa    = d['odmiana_$i']         as String? ?? '';
+    final skrzynie = _intStr(d['skrzynie_$i']);
+    final waga     = _dblStr(d['waga_$i']);
+    if (nazwa.isNotEmpty || skrzynie != '0') {
+      result.add((nazwa, skrzynie, waga.isNotEmpty ? '$waga kg' : ''));
+    }
+  }
+  return result;
+}
 
 String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
