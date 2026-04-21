@@ -413,7 +413,7 @@ class _OdmianaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ratio = total <= 0 ? 0.0 : (kg / total).clamp(0.0, 1.0);
     return Container(
-      padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: color.withAlpha(30), width: 0.5)),
       ),
@@ -425,18 +425,18 @@ class _OdmianaRow extends StatelessWidget {
               child: Text(odmiana,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11)),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             Text('${kg.toStringAsFixed(0)} kg',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
           ]),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: ratio,
-              minHeight: 4,
+              minHeight: 6,
               color: color,
               backgroundColor: color.withAlpha(25),
             ),
@@ -466,75 +466,69 @@ class _LotCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = przeznaczenieColor;
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryDark,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'Dost. #${entry.nrDostawy}',
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                  ),
+            // Wiersz 1: numer dostawy + przeznaczenie + data + kg
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryDark,
+                  borderRadius: BorderRadius.circular(5),
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(25),
-                    borderRadius: BorderRadius.circular(5),
-                    border: Border.all(color: color.withAlpha(80)),
-                  ),
-                  child: Text(
-                    entry.przeznaczenie,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
-                  ),
+                child: Text('Dost. #${entry.nrDostawy}',
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withAlpha(25),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: color.withAlpha(80)),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  entry.data,
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                child: Text(entry.przeznaczenie,
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color)),
+              ),
+              const SizedBox(width: 6),
+              Text(entry.data,
+                  style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withAlpha(25),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: color.withAlpha(80)),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(25),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: color.withAlpha(80)),
-                  ),
-                  child: Text(
-                    '${entry.kgValue.toStringAsFixed(0)} kg',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              entry.lot,
-              style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.primaryMid,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'monospace'),
-            ),
+                child: Text('${entry.kgValue.toStringAsFixed(0)} kg',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+              ),
+            ]),
             const SizedBox(height: 4),
-            _InfoLine(Icons.eco_outlined,
-                '${_cap(entry.owoc)}${entry.odmiana.isNotEmpty ? " • ${entry.odmiana}" : ""}'),
-            _InfoLine(Icons.business_outlined, entry.dostawca),
-
+            // Wiersz 2: LOT
+            Text(entry.lot,
+                style: const TextStyle(fontSize: 11, color: AppTheme.primaryMid, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            // Wiersz 3: owoc + odmiana + dostawca w jednej linii
+            Row(children: [
+              Icon(Icons.eco_outlined, size: 11, color: AppTheme.textSecondary),
+              const SizedBox(width: 3),
+              Expanded(
+                child: Text(
+                  '${_cap(entry.owoc)}${entry.odmiana.isNotEmpty ? " • ${entry.odmiana}" : ""}  •  ${entry.dostawca}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                ),
+              ),
+            ]),
             if (crateInfo != null && crateInfo!.total > 0) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Row(children: [
                 _CrateBadge(
                   icon: Icons.inventory_outlined,
@@ -549,17 +543,16 @@ class _LotCard extends StatelessWidget {
                 ),
               ]),
             ],
-
-            const SizedBox(height: 8),
-
+            const SizedBox(height: 6),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                icon: const Icon(Icons.swap_horiz, size: 16),
+                icon: const Icon(Icons.swap_horiz, size: 14),
                 label: const Text('Zmień przeznaczenie'),
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  textStyle: const TextStyle(fontSize: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  textStyle: const TextStyle(fontSize: 11),
+                  minimumSize: const Size(0, 28),
                 ),
                 onPressed: () => _showZmianaDialog(context),
               ),
