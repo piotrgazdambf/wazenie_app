@@ -7,10 +7,10 @@ import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
 
-// ── Model ─────────────────────────────────────────────────────────────────────
+// ── Model CrateState ─────────────────────────────────────────────────────────
 
 class CrateState {
-  final String id;          // = docId (lot z / zastąpione _)
+  final String id;
   final String lot;
   final String odmiana;
   final String owoc;
@@ -30,77 +30,102 @@ class CrateState {
   final bool isKwg;
 
   const CrateState({
-    required this.id,
-    required this.lot,
-    required this.odmiana,
-    required this.owoc,
-    required this.dostawca,
-    required this.przeznaczenie,
-    required this.nrDostawy,
-    required this.data,
-    required this.drewTotal,
-    required this.plastTotal,
-    required this.drewRemaining,
-    required this.plastRemaining,
-    required this.drewWagaJedn,
-    required this.plastWagaJedn,
-    required this.kgTotal,
-    required this.kgRemaining,
-    required this.active,
-    required this.isKwg,
+    required this.id, required this.lot, required this.odmiana,
+    required this.owoc, required this.dostawca, required this.przeznaczenie,
+    required this.nrDostawy, required this.data,
+    required this.drewTotal, required this.plastTotal,
+    required this.drewRemaining, required this.plastRemaining,
+    required this.drewWagaJedn, required this.plastWagaJedn,
+    required this.kgTotal, required this.kgRemaining,
+    required this.active, required this.isKwg,
   });
 
   factory CrateState.fromFirestore(String id, Map<String, dynamic> d) => CrateState(
-    id:             id,
-    lot:            d['lot'] as String? ?? '',
-    odmiana:        d['odmiana'] as String? ?? '',
-    owoc:           d['owoc'] as String? ?? '',
-    dostawca:       d['dostawca'] as String? ?? '',
-    przeznaczenie:  d['przeznaczenie'] as String? ?? '',
-    nrDostawy:      d['nr_dostawy'] as String? ?? '',
-    data:           d['data'] as String? ?? '',
-    drewTotal:      (d['drew_total'] as num?)?.toInt() ?? 0,
-    plastTotal:     (d['plast_total'] as num?)?.toInt() ?? 0,
-    drewRemaining:  (d['drew_remaining'] as num?)?.toInt() ?? 0,
-    plastRemaining: (d['plast_remaining'] as num?)?.toInt() ?? 0,
-    drewWagaJedn:   (d['drew_waga_jedn'] as num?)?.toDouble() ?? 20.0,
+    id: id, lot: d['lot'] as String? ?? '',
+    odmiana: d['odmiana'] as String? ?? '', owoc: d['owoc'] as String? ?? '',
+    dostawca: d['dostawca'] as String? ?? '', przeznaczenie: d['przeznaczenie'] as String? ?? '',
+    nrDostawy: d['nr_dostawy'] as String? ?? '', data: d['data'] as String? ?? '',
+    drewTotal:      (d['drew_total']      as num?)?.toInt()    ?? 0,
+    plastTotal:     (d['plast_total']     as num?)?.toInt()    ?? 0,
+    drewRemaining:  (d['drew_remaining']  as num?)?.toInt()    ?? 0,
+    plastRemaining: (d['plast_remaining'] as num?)?.toInt()    ?? 0,
+    drewWagaJedn:   (d['drew_waga_jedn']  as num?)?.toDouble() ?? 20.0,
     plastWagaJedn:  (d['plast_waga_jedn'] as num?)?.toDouble() ?? 10.0,
-    kgTotal:        (d['kg_total'] as num?)?.toDouble() ?? 0,
-    kgRemaining:    (d['kg_remaining'] as num?)?.toDouble() ?? 0,
-    active:         d['active'] as bool? ?? true,
-    isKwg:          d['is_kwg'] as bool? ?? false,
+    kgTotal:        (d['kg_total']        as num?)?.toDouble() ?? 0,
+    kgRemaining:    (d['kg_remaining']    as num?)?.toDouble() ?? 0,
+    active: d['active'] as bool? ?? true, isKwg: d['is_kwg'] as bool? ?? false,
   );
 
   int get totalCratesRemaining => drewRemaining + plastRemaining;
+  double get kgPerCrate => totalCratesRemaining == 0 ? 0 : kgRemaining / totalCratesRemaining;
 
-  /// Kg na skrzynię — prosty średni przelicznik (model użytkownika)
-  double get kgPerCrate {
-    if (totalCratesRemaining == 0) return 0;
-    return kgRemaining / totalCratesRemaining;
-  }
-
-  /// Kg obliczone dla N skrzyń drew + M plast (proporcjonalnie przez tarę)
   double kgForRemoval(int drew, int plast) {
-    final totalTaraRemaining =
-        drewRemaining * drewWagaJedn + plastRemaining * plastWagaJedn;
-    if (totalTaraRemaining <= 0 || kgRemaining <= 0) return 0;
-    final taraRemoved = drew * drewWagaJedn + plast * plastWagaJedn;
-    return (kgRemaining * taraRemoved / totalTaraRemaining).clamp(0, kgRemaining);
+    final totalTara = drewRemaining * drewWagaJedn + plastRemaining * plastWagaJedn;
+    if (totalTara <= 0 || kgRemaining <= 0) return 0;
+    return (kgRemaining * (drew * drewWagaJedn + plast * plastWagaJedn) / totalTara)
+        .clamp(0, kgRemaining);
   }
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Model CrateAction ─────────────────────────────────────────────────────────
 
-final crateStatesProvider = StreamProvider<List<CrateState>>((ref) {
-  return FirebaseFirestore.instance
+class CrateAction {
+  final String id;
+  final String dostawca;
+  final String lot;
+  final String owoc;
+  final String odmiana;
+  final String przeznaczenie;
+  final String nrDostawy;
+  final String data;
+  final String akcja;
+  final int drewZdj;
+  final int plastZdj;
+  final DateTime? createdAt;
+
+  const CrateAction({
+    required this.id, required this.dostawca, required this.lot,
+    required this.owoc, required this.odmiana, required this.przeznaczenie,
+    required this.nrDostawy, required this.data, required this.akcja,
+    required this.drewZdj, required this.plastZdj, this.createdAt,
+  });
+
+  factory CrateAction.fromFirestore(String id, Map<String, dynamic> d) {
+    DateTime? parseTs(dynamic v) {
+      if (v is Timestamp) return v.toDate();
+      return null;
+    }
+    return CrateAction(
+      id: id, dostawca: d['dostawca'] as String? ?? '',
+      lot: d['lot'] as String? ?? '', owoc: d['owoc'] as String? ?? '',
+      odmiana: d['odmiana'] as String? ?? '', przeznaczenie: d['przeznaczenie'] as String? ?? '',
+      nrDostawy: d['nr_dostawy'] as String? ?? '', data: d['data'] as String? ?? '',
+      akcja: d['akcja'] as String? ?? 'Zejście',
+      drewZdj:  (d['drew_zdj']  as num?)?.toInt() ?? 0,
+      plastZdj: (d['plast_zdj'] as num?)?.toInt() ?? 0,
+      createdAt: parseTs(d['createdAt']),
+    );
+  }
+}
+
+// ── Providers ─────────────────────────────────────────────────────────────────
+
+final crateStatesProvider = StreamProvider<List<CrateState>>((ref) =>
+  FirebaseFirestore.instance
       .collection(AppConstants.colCrateStates)
       .where('active', isEqualTo: true)
       .orderBy('createdAt', descending: true)
       .snapshots()
-      .map((snap) => snap.docs
-          .map((d) => CrateState.fromFirestore(d.id, d.data()))
-          .toList());
-});
+      .map((s) => s.docs.map((d) => CrateState.fromFirestore(d.id, d.data())).toList()));
+
+final crateActionsProvider = StreamProvider<List<CrateAction>>((ref) =>
+  FirebaseFirestore.instance
+      .collection(AppConstants.colMcrQueue)
+      .where('akcja', isEqualTo: 'Zejście cząstkowe')
+      .orderBy('createdAt', descending: true)
+      .limit(100)
+      .snapshots()
+      .map((s) => s.docs.map((d) => CrateAction.fromFirestore(d.id, d.data())).toList()));
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -109,232 +134,275 @@ class SkrzynieScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cratesAsync = ref.watch(crateStatesProvider);
-
     return OfflineOverflowGuard(
-      child: Scaffold(
-        backgroundColor: AppTheme.background,
-        appBar: AppBar(
-          title: const Text('Stany skrzyń'),
-          leading: BackButton(onPressed: () => context.go('/home')),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () => ref.invalidate(crateStatesProvider),
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            const OfflineBanner(),
-            Expanded(
-              child: cratesAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => _ErrorView(message: e.toString()),
-                data: (list) {
-                  if (list.isEmpty) return const _EmptyView();
-
-                  // Suma łączna kg
-                  final totalKg = list.fold(0.0, (s, c) => s + c.kgRemaining);
-                  final totalDrew = list.fold(0, (s, c) => s + c.drewRemaining);
-                  final totalPlast = list.fold(0, (s, c) => s + c.plastRemaining);
-
-                  return ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      // Summary card
-                      _SummaryCard(
-                        totalKg: totalKg,
-                        totalDrew: totalDrew,
-                        totalPlast: totalPlast,
-                        count: list.length,
-                      ),
-                      const SizedBox(height: 12),
-                      // Individual crate cards
-                      ...list.map((c) => _CrateCard(
-                        state: c,
-                        onZdejmij: () => _showZdejmijDialog(context, c),
-                      )),
-                    ],
-                  );
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          backgroundColor: AppTheme.background,
+          appBar: AppBar(
+            title: const Text('Skrzynie'),
+            leading: BackButton(onPressed: () => context.go('/home')),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () {
+                  ref.invalidate(crateStatesProvider);
+                  ref.invalidate(crateActionsProvider);
                 },
               ),
-            ),
-          ],
+            ],
+            bottom: const TabBar(tabs: [
+              Tab(text: 'Stany skrzyń'),
+              Tab(text: 'Akcje skrzyń'),
+            ]),
+          ),
+          body: Column(children: [
+            const OfflineBanner(),
+            const Expanded(child: TabBarView(children: [
+              _StanyTab(),
+              _AkcjeTab(),
+            ])),
+          ]),
         ),
       ),
     );
   }
-
-  Future<void> _showZdejmijDialog(BuildContext context, CrateState state) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => _ZdejmijDialog(state: state),
-    );
-  }
 }
 
-// ── Podsumowanie ──────────────────────────────────────────────────────────────
+// ── TAB 1: STANY ──────────────────────────────────────────────────────────────
 
-class _SummaryCard extends StatelessWidget {
-  final double totalKg;
-  final int totalDrew;
-  final int totalPlast;
-  final int count;
-  const _SummaryCard({
-    required this.totalKg, required this.totalDrew,
-    required this.totalPlast, required this.count,
-  });
+class _StanyTab extends ConsumerWidget {
+  const _StanyTab();
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.primaryDark, AppTheme.primaryMid],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.all(Radius.circular(16)),
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 18),
-          const SizedBox(width: 8),
-          Text('STANY SKRZYŃ — $count aktywnych LOT-ów',
-              style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _SumTile('Łącznie kg', '${totalKg.toStringAsFixed(0)} kg')),
-          Expanded(child: _SumTile('Skrz. drew.', '$totalDrew szt.')),
-          Expanded(child: _SumTile('Skrz. plast.', '$totalPlast szt.')),
-        ]),
-      ]),
-    );
-  }
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(crateStatesProvider);
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Błąd: $e')),
+      data: (list) {
+        if (list.isEmpty) return const _EmptyView();
 
-class _SumTile extends StatelessWidget {
-  final String label;
-  final String value;
-  const _SumTile(this.label, this.value);
+        final totalDrew  = list.fold(0, (s, c) => s + c.drewRemaining);
+        final totalPlast = list.fold(0, (s, c) => s + c.plastRemaining);
 
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11)),
-      const SizedBox(height: 2),
-      Text(value, style: const TextStyle(
-          color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-    ],
-  );
-}
+        // Agreguj per dostawca
+        final Map<String, ({int drew, int plast, List<CrateState> lots})> byDostawca = {};
+        for (final c in list) {
+          final d = c.dostawca.trim().isEmpty ? '(nieznany)' : c.dostawca.trim();
+          if (!byDostawca.containsKey(d)) {
+            byDostawca[d] = (drew: 0, plast: 0, lots: []);
+          }
+          final prev = byDostawca[d]!;
+          byDostawca[d] = (
+            drew: prev.drew + c.drewRemaining,
+            plast: prev.plast + c.plastRemaining,
+            lots: [...prev.lots, c],
+          );
+        }
 
-// ── Karta skrzyni ─────────────────────────────────────────────────────────────
+        final sorted = byDostawca.entries.toList()
+          ..sort((a, b) => (b.value.drew + b.value.plast).compareTo(a.value.drew + a.value.plast));
 
-class _CrateCard extends StatelessWidget {
-  final CrateState state;
-  final VoidCallback onZdejmij;
-  const _CrateCard({required this.state, required this.onZdejmij});
-
-  @override
-  Widget build(BuildContext context) {
-    final kgPer = state.kgPerCrate;
-    final pct   = state.kgTotal > 0
-        ? (state.kgRemaining / state.kgTotal).clamp(0.0, 1.0)
-        : 0.0;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Nagłówek
-          Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                  state.odmiana.isNotEmpty ? state.odmiana : '—',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15,
-                      color: AppTheme.primaryDark),
+        return ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            // Nagłówek — bez kg
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppTheme.primaryDark, AppTheme.primaryMid],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
                 ),
-                Text(
-                  '${state.owoc.isNotEmpty ? state.owoc[0].toUpperCase() + state.owoc.substring(1) : ''}'
-                  ' • ${state.przeznaczenie}'
-                  ' • Dost. ${state.nrDostawy}',
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                ),
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(children: [
+                const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                const Text('STANY SKRZYŃ', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                _SumBadge('Drewniane', '$totalDrew szt.'),
+                const SizedBox(width: 16),
+                _SumBadge('Plastikowe', '$totalPlast szt.'),
               ]),
             ),
-            if (state.isKwg)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppTheme.warningOrange.withAlpha(25),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.warningOrange.withAlpha(80)),
-                ),
-                child: const Text('KWG', style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.warningOrange)),
-              ),
-          ]),
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-          // Progress bar kg
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: pct,
-              backgroundColor: AppTheme.borderLight,
-              color: pct > 0.5
-                  ? AppTheme.accent
-                  : pct > 0.2
-                      ? AppTheme.warningOrange
-                      : AppTheme.errorRed,
-              minHeight: 6,
+            // Tabela nagłówek
+            Container(
+              decoration: const BoxDecoration(
+                color: AppTheme.primaryDark,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(children: [
+                const Expanded(child: Text('DOSTAWCA', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700))),
+                SizedBox(width: 80, child: Text('DREWNIANE', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+                SizedBox(width: 80, child: Text('PLASTIKOWE', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+              ]),
             ),
+
+            // Wiersze
+            Card(
+              margin: EdgeInsets.zero,
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(bottom: Radius.circular(8))),
+              child: Column(
+                children: sorted.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final e = entry.value;
+                  final isLast = i == sorted.length - 1;
+                  return InkWell(
+                    onTap: () => _showDostawcaLots(context, e.key, e.value.lots),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: i.isEven ? Colors.white : AppTheme.background,
+                        borderRadius: isLast
+                            ? const BorderRadius.vertical(bottom: Radius.circular(8))
+                            : null,
+                        border: isLast ? null : const Border(bottom: BorderSide(color: AppTheme.borderLight, width: 0.5)),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text(e.key,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: Text(
+                            e.value.drew > 0 ? '${e.value.drew}' : '—',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700,
+                              color: e.value.drew > 0 ? AppTheme.primaryMid : AppTheme.textSecondary,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: Text(
+                            e.value.plast > 0 ? '${e.value.plast}' : '—',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700,
+                              color: e.value.plast > 0 ? AppTheme.accent : AppTheme.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showDostawcaLots(BuildContext context, String dostawca, List<CrateState> lots) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _DostawcaLotsSheet(dostawca: dostawca, lots: lots),
+    );
+  }
+}
+
+class _SumBadge extends StatelessWidget {
+  final String label;
+  final String value;
+  const _SumBadge(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+    Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
+    Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+  ]);
+}
+
+// ── Bottom sheet: loty dostawcy ───────────────────────────────────────────────
+
+class _DostawcaLotsSheet extends StatelessWidget {
+  final String dostawca;
+  final List<CrateState> lots;
+  const _DostawcaLotsSheet({required this.dostawca, required this.lots});
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      minChildSize: 0.3,
+      builder: (_, ctrl) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(children: [
+          const SizedBox(height: 8),
+          Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: AppTheme.borderLight, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(dostawca, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 8),
-
-          // Statystyki
-          Row(children: [
-            _StatChip(Icons.scale_outlined, '${state.kgRemaining.toStringAsFixed(1)} kg',
-                AppTheme.primaryMid),
-            const SizedBox(width: 8),
-            _StatChip(Icons.aspect_ratio_outlined,
-                '${kgPer.toStringAsFixed(1)} kg/skrz.', AppTheme.accent),
-            const SizedBox(width: 8),
-            _StatChip(Icons.inventory_outlined,
-                '${state.drewRemaining}D + ${state.plastRemaining}P',
-                AppTheme.textSecondary),
-          ]),
-
-          const SizedBox(height: 10),
-
-          // LOT tekst
-          Text(state.lot,
-              style: const TextStyle(
-                  fontSize: 11, color: AppTheme.textSecondary, fontFamily: 'monospace')),
-
-          const SizedBox(height: 10),
-          const Divider(height: 1),
-          const SizedBox(height: 8),
-
-          // Przycisk
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: state.totalCratesRemaining > 0 ? onZdejmij : null,
-              icon: const Icon(Icons.remove_circle_outline, size: 18),
-              label: const Text('Zdejmij skrzynie'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.errorRed,
-                side: const BorderSide(color: AppTheme.errorRed, width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-              ),
+          const Divider(),
+          Expanded(
+            child: ListView.builder(
+              controller: ctrl,
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+              itemCount: lots.length,
+              itemBuilder: (_, i) {
+                final c = lots[i];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Expanded(child: Text(
+                          c.odmiana.isNotEmpty ? c.odmiana : c.owoc,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                        )),
+                        Text('${c.drewRemaining}D + ${c.plastRemaining}P',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryMid)),
+                      ]),
+                      Text('${c.przeznaczenie}  •  Dost. ${c.nrDostawy}  •  ${c.data}',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                      Text(c.lot, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: c.totalCratesRemaining > 0
+                              ? () {
+                                  Navigator.of(context).pop();
+                                  showDialog<void>(
+                                    context: context,
+                                    builder: (_) => _ZdejmijDialog(state: c),
+                                  );
+                                }
+                              : null,
+                          icon: const Icon(Icons.remove_circle_outline, size: 16),
+                          label: const Text('Zdejmij skrzynie'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.errorRed,
+                            side: const BorderSide(color: AppTheme.errorRed),
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            textStyle: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                );
+              },
             ),
           ),
         ]),
@@ -343,21 +411,71 @@ class _CrateCard extends StatelessWidget {
   }
 }
 
-class _StatChip extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color color;
-  const _StatChip(this.icon, this.text, this.color);
+// ── TAB 2: AKCJE ─────────────────────────────────────────────────────────────
+
+class _AkcjeTab extends ConsumerWidget {
+  const _AkcjeTab();
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 14, color: color),
-      const SizedBox(width: 4),
-      Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-    ],
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(crateActionsProvider);
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Błąd: $e')),
+      data: (list) {
+        if (list.isEmpty) return const Center(
+          child: Text('Brak akcji skrzyń', style: TextStyle(color: AppTheme.textSecondary)),
+        );
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: list.length,
+          itemBuilder: (_, i) {
+            final a = list[i];
+            final dateStr = a.createdAt != null
+                ? '${a.createdAt!.day.toString().padLeft(2,'0')}.${a.createdAt!.month.toString().padLeft(2,'0')}.${a.createdAt!.year}  ${a.createdAt!.hour.toString().padLeft(2,'0')}:${a.createdAt!.minute.toString().padLeft(2,'0')}'
+                : a.data;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorRed.withAlpha(20),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.remove_circle_outline, size: 18, color: AppTheme.errorRed),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(a.dostawca.isNotEmpty ? a.dostawca : '—',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(
+                      '${a.nrDostawy.isNotEmpty ? "Dost. ${a.nrDostawy}  •  " : ""}'
+                      '${a.owoc.isNotEmpty ? "${a.owoc}${a.odmiana.isNotEmpty ? " • ${a.odmiana}" : ""}  •  " : ""}'
+                      '${a.przeznaczenie}',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(dateStr, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                  ])),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    if (a.drewZdj > 0)
+                      Text('−${a.drewZdj}D', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryMid)),
+                    if (a.plastZdj > 0)
+                      Text('−${a.plastZdj}P', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.accent)),
+                  ]),
+                ]),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 // ── Dialog zdejmowania skrzyń ─────────────────────────────────────────────────
@@ -376,17 +494,11 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
   bool _saving = false;
 
   @override
-  void dispose() {
-    _drewCtrl.dispose();
-    _plastCtrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _drewCtrl.dispose(); _plastCtrl.dispose(); super.dispose(); }
 
   int get _drewN  => int.tryParse(_drewCtrl.text.trim()) ?? 0;
   int get _plastN => int.tryParse(_plastCtrl.text.trim()) ?? 0;
-
   double get _kgDoZdjecia => widget.state.kgForRemoval(_drewN, _plastN);
-
   bool get _valid =>
       (_drewN + _plastN) > 0 &&
       _drewN <= widget.state.drewRemaining &&
@@ -395,39 +507,31 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
   Future<void> _confirm() async {
     if (!_valid) return;
     setState(() => _saving = true);
-
-    final s     = widget.state;
-    final kg    = _kgDoZdjecia;
-    final newDr = s.drewRemaining - _drewN;
-    final newPl = s.plastRemaining - _plastN;
-    final newKg = (s.kgRemaining - kg).clamp(0.0, s.kgTotal);
+    final s = widget.state;
+    final kg = _kgDoZdjecia;
 
     try {
       final db  = FirebaseFirestore.instance;
       final now = DateTime.now();
 
-      // Aktualizuj crateState
       await db.collection(AppConstants.colCrateStates).doc(s.id).update({
-        'drew_remaining':  newDr,
-        'plast_remaining': newPl,
-        'kg_remaining':    newKg,
-        'active':          (newDr + newPl) > 0 && newKg > 0,
+        'drew_remaining':  s.drewRemaining - _drewN,
+        'plast_remaining': s.plastRemaining - _plastN,
+        'kg_remaining':    (s.kgRemaining - kg).clamp(0.0, s.kgTotal),
+        'active':          ((s.drewRemaining - _drewN) + (s.plastRemaining - _plastN)) > 0,
         'updatedAt':       FieldValue.serverTimestamp(),
       });
 
-      // Utwórz wpis MCR — Zejście
       await db.collection(AppConstants.colMcrQueue).add({
-        'lot':          s.lot,
-        'czas':         '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}',
-        'akcja':        'Zejście cząstkowe',
-        'waga_netto':   kg.toStringAsFixed(2),
-        'owoc':         s.owoc,
-        'odmiana':      s.odmiana,
-        'przeznaczenie':s.przeznaczenie,
-        'drew_zdj':     _drewN,
-        'plast_zdj':    _plastN,
-        'status':       'done',
-        'createdAt':    FieldValue.serverTimestamp(),
+        'lot': s.lot, 'dostawca': s.dostawca,
+        'czas': '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}',
+        'akcja': 'Zejście cząstkowe',
+        'waga_netto': kg.toStringAsFixed(2),
+        'owoc': s.owoc, 'odmiana': s.odmiana,
+        'przeznaczenie': s.przeznaczenie,
+        'nr_dostawy': s.nrDostawy, 'data': s.data,
+        'drew_zdj': _drewN, 'plast_zdj': _plastN,
+        'status': 'done', 'createdAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) Navigator.of(context).pop();
@@ -443,15 +547,12 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final s   = widget.state;
-    final kgP = s.kgPerCrate;
-
+    final s = widget.state;
     return AlertDialog(
       title: Text('Zdejmij skrzynie\n${s.odmiana.isNotEmpty ? s.odmiana : s.lot}',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Info przelicznik
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -459,76 +560,51 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppTheme.accent.withAlpha(60)),
             ),
-            child: Row(children: [
-              const Icon(Icons.info_outline, size: 16, color: AppTheme.accentDark),
-              const SizedBox(width: 8),
-              Expanded(child: Text(
-                'Przelicznik: ~${kgP.toStringAsFixed(1)} kg/skrzynię\n'
-                'Stan: ${s.drewRemaining}D + ${s.plastRemaining}P = ${s.kgRemaining.toStringAsFixed(1)} kg',
-                style: const TextStyle(fontSize: 12, color: AppTheme.primaryDark),
-              )),
-            ]),
+            child: Text(
+              'Stan: ${s.drewRemaining}D + ${s.plastRemaining}P\n'
+              '~${s.kgPerCrate.toStringAsFixed(1)} kg/skrzynię',
+              style: const TextStyle(fontSize: 12, color: AppTheme.primaryDark),
+            ),
           ),
           const SizedBox(height: 16),
-
-          // Pola wejściowe
           Row(children: [
-            Expanded(
-              child: TextFormField(
-                controller: _drewCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Skrz. drewn. (max ${s.drewRemaining})',
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
+            Expanded(child: TextFormField(
+              controller: _drewCtrl,
+              decoration: InputDecoration(labelText: 'Drewn. (max ${s.drewRemaining})'),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => setState(() {}),
+            )),
             const SizedBox(width: 10),
-            Expanded(
-              child: TextFormField(
-                controller: _plastCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Skrz. plast. (max ${s.plastRemaining})',
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
+            Expanded(child: TextFormField(
+              controller: _plastCtrl,
+              decoration: InputDecoration(labelText: 'Plast. (max ${s.plastRemaining})'),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => setState(() {}),
+            )),
           ]),
-          const SizedBox(height: 16),
-
-          // Podgląd wyniku
-          if (_drewN + _plastN > 0)
+          if (_drewN + _plastN > 0) ...[
+            const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: _valid
-                    ? AppTheme.errorRed.withAlpha(15)
-                    : AppTheme.warningOrange.withAlpha(15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _valid
-                      ? AppTheme.errorRed.withAlpha(60)
-                      : AppTheme.warningOrange.withAlpha(60),
-                ),
+                color: _valid ? AppTheme.errorRed.withAlpha(15) : AppTheme.warningOrange.withAlpha(15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _valid ? AppTheme.errorRed.withAlpha(60) : AppTheme.warningOrange.withAlpha(60)),
               ),
               child: Column(children: [
-                _ResultRow('Skrzynie do zdjęcia', '${_drewN}D + ${_plastN}P'),
-                _ResultRow('Kg do odjęcia', '−${_kgDoZdjecia.toStringAsFixed(2)} kg'),
-                if (!_valid)
-                  const Text('Przekroczono dostępną liczbę skrzyń!',
-                      style: TextStyle(color: AppTheme.errorRed, fontSize: 12)),
+                _Row2('Skrzynie', '${_drewN}D + ${_plastN}P'),
+                _Row2('Kg do odjęcia', '−${_kgDoZdjecia.toStringAsFixed(2)} kg'),
+                if (!_valid) const Text('Przekroczono dostępną liczbę!',
+                    style: TextStyle(color: AppTheme.errorRed, fontSize: 12)),
               ]),
             ),
+          ],
         ]),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Anuluj'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Anuluj')),
         ElevatedButton(
           onPressed: (_valid && !_saving) ? _confirm : null,
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
@@ -542,21 +618,18 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
   }
 }
 
-class _ResultRow extends StatelessWidget {
+class _Row2 extends StatelessWidget {
   final String label;
   final String value;
-  const _ResultRow(this.label, this.value);
+  const _Row2(this.label, this.value);
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-      ],
-    ),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+      Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+    ]),
   );
 }
 
@@ -571,25 +644,6 @@ class _EmptyView extends StatelessWidget {
       Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.borderLight),
       SizedBox(height: 12),
       Text('Brak aktywnych skrzyń', style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
-      SizedBox(height: 4),
-      Text('Skrzynie pojawiają się po zapisaniu karty KW/KWG',
-          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-          textAlign: TextAlign.center),
-    ]),
-  );
-}
-
-class _ErrorView extends StatelessWidget {
-  final String message;
-  const _ErrorView({required this.message});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.error_outline, size: 48, color: AppTheme.errorRed),
-      const SizedBox(height: 12),
-      Text(message, textAlign: TextAlign.center,
-          style: const TextStyle(color: AppTheme.textSecondary)),
     ]),
   );
 }
