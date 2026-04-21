@@ -1,0 +1,31 @@
+{
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{"source": "**", "destination": "/index.html"}]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "mbf-przyjecia",
+          "appId": "1:70138421421:android:c977e0d1365af7b5eb6624",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "mbf-przyjecia",
+          "configurations": {
+            "android": "1:70138421421:android:c977e0d1365af7b5eb6624",
+            "ios": "1:70138421421:ios:a4422121caba1982eb6624",
+            "web": "1:70138421421:web:fa798be6f39bd353eb6624"
+          }
+        }
+      }
+    }
+  }
+}
