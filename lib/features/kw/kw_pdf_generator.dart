@@ -283,7 +283,7 @@ class KwPdfGenerator {
               _w3('3', 'Waga załadowanego auta II',  d.drugiAut && d.wagaA2Zal > 0 ? _n(d.wagaA2Zal) : '', pad, sR9, sB9),
               _w3('4', 'Waga rozładowanego auta II', d.drugiAut && d.wagaA2Roz > 0 ? _n(d.wagaA2Roz) : '', pad, sR9, sB9),
 
-              // Wiersze 5-6: skrzynie — IL. / WAGA/szt / TARA
+              // Wiersze 5-6: skrzynie — tylko jeśli ilość > 0
               _w3skrzynie('5', 'Ilość skrzyń drewnianych',  d.drewIl,  d.drewWagaJedn,  taraDrew,  pad, sR9, sB9),
               _w3skrzynie('6', 'Ilość skrzyń plastikowych', d.plastIl, d.plastWagaJedn, taraPlast, pad, sR9, sB9),
 
@@ -307,26 +307,46 @@ class KwPdfGenerator {
                 ),
               ]),
 
-              // Wiersze 9-12: odmiany
+              // Wiersze 9-12: odmiany — format warunkowy
               ...List.generate(4, (i) {
                 final hasO = i < d.odmiany.length;
                 final o    = hasO ? d.odmiany[i] : null;
                 final lbl  = 'ODMIANA ${["I","II","III","IV"][i]}';
                 final nazwaTxt = (o != null && o.nazwa.isNotEmpty) ? '$lbl:  ${o.nazwa}' : lbl;
-
-                String prawyTxt = '';
-                if (hasO) {
-                  final skrzyny = (o!.drewIl > 0 || o.plastIl > 0)
-                      ? 'Il. skrzyń drew/plast:  ${o.drewIl}/${o.plastIl}'
-                      : '';
-                  final zwrot = o.zwrotPct > 0 ? 'Zwrot:  ${o.zwrotPct}%' : '';
-                  prawyTxt = [skrzyny, zwrot].where((s) => s.isNotEmpty).join('    ');
-                }
+                final hasDrew  = o != null && o.drewIl  > 0;
+                final hasPlast = o != null && o.plastIl > 0;
+                final hasZwrot = o != null && o.zwrotPct > 0;
 
                 return pw.TableRow(children: [
                   pw.Container(padding: padH, child: pw.Text('${i + 9}', style: sB9)),
                   pw.Container(padding: padH, child: pw.Text(nazwaTxt, style: sB9)),
-                  pw.Container(padding: padH, child: pw.Text(prawyTxt, style: sR9)),
+                  pw.Container(
+                    padding: padH,
+                    child: !hasO ? pw.SizedBox() : pw.Row(children: [
+                      // Tylko drewniane
+                      if (hasDrew && !hasPlast) ...[
+                        pw.Text('Ilość skrzyń drewnianych: ', style: sR9),
+                        pw.Text('${o!.drewIl}', style: sB9),
+                      ],
+                      // Tylko plastikowe
+                      if (hasPlast && !hasDrew) ...[
+                        pw.Text('Ilość skrzyń plastikowych: ', style: sR9),
+                        pw.Text('${o!.plastIl}', style: sB9),
+                      ],
+                      // Oba rodzaje
+                      if (hasDrew && hasPlast) ...[
+                        pw.Text('Ilość skrzyń  |  Drewnianych: ', style: sR9),
+                        pw.Text('${o!.drewIl}', style: sB9),
+                        pw.Text('  |  Plastikowych: ', style: sR9),
+                        pw.Text('${o.plastIl}', style: sB9),
+                      ],
+                      // Zwrot (tylko jeśli > 0)
+                      if (hasZwrot) ...[
+                        pw.Text('  |  Zwrot: ', style: sR9),
+                        pw.Text('${o!.zwrotPct}%', style: sB9),
+                      ],
+                    ]),
+                  ),
                 ]);
               }),
             ],
@@ -523,7 +543,7 @@ class KwPdfGenerator {
         pw.Container(padding: pad, child: pw.Text(val, style: bs)),
       ]);
 
-  // Wiersz skrzyń: nr | opis | Ilość: X  Waga: Y kg  Tara: Z kg
+  // Wiersz skrzyń: jeśli ilość == 0 → pusta prawa komórka
   static pw.TableRow _w3skrzynie(String num, String desc,
       int il, double wagaJedn, double tara,
       pw.EdgeInsets pad, pw.TextStyle s, pw.TextStyle bs) =>
@@ -532,16 +552,17 @@ class KwPdfGenerator {
         pw.Container(padding: pad, child: pw.Text(desc, style: s)),
         pw.Container(
           padding: pad,
-          child: pw.Row(children: [
-            pw.Text('Ilość: ', style: s),
-            pw.Text('$il', style: bs),
-            pw.SizedBox(width: 12),
-            pw.Text('Waga: ', style: s),
-            pw.Text('${wagaJedn.toStringAsFixed(0)} kg', style: bs),
-            pw.SizedBox(width: 12),
-            pw.Text('Tara: ', style: s),
-            pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
-          ]),
+          child: il == 0
+              ? pw.SizedBox()
+              : pw.Row(children: [
+                  pw.Text('$il', style: bs),
+                  pw.Text('  |  ', style: s),
+                  pw.Text('WAGA/szt: ', style: s),
+                  pw.Text('${wagaJedn.toStringAsFixed(0)} kg', style: bs),
+                  pw.Text('  |  ', style: s),
+                  pw.Text('TARA: ', style: s),
+                  pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
+                ]),
         ),
       ]);
 

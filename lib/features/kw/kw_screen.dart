@@ -545,17 +545,17 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           const Divider(height: 16),
           // Parametry jakości
           Row(children: [
-            Expanded(child: _NumField('BRIX', o.brixCtrl)),
+            Expanded(child: _NumField('BRIX', o.brixCtrl, required: true)),
             const SizedBox(width: 8),
-            Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl)),
+            Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl, required: true)),
           ]),
           if (showTward) ...[
             const SizedBox(height: 8),
-            _TwardoscField(ctrl: o.twardCtrl),
+            _TwardoscField(ctrl: o.twardCtrl, required: true),
           ],
           if (showPw) ...[
             const SizedBox(height: 8),
-            _NumField('PW (kaliber ↓68 mm) [%]', o.pwCtrl),
+            _NumField('PW (kaliber ↓68 mm) [%]', o.pwCtrl, required: true),
           ],
         ],
       ),
@@ -797,7 +797,8 @@ class _NumField extends StatelessWidget {
 
 class _TwardoscField extends StatelessWidget {
   final TextEditingController ctrl;
-  const _TwardoscField({required this.ctrl});
+  final bool required;
+  const _TwardoscField({required this.ctrl, this.required = false});
 
   @override
   Widget build(BuildContext context) {
@@ -819,6 +820,9 @@ class _TwardoscField extends StatelessWidget {
       ),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+      validator: required
+          ? (v) => (v == null || v.trim().isEmpty) ? 'Wymagane' : null
+          : null,
     );
   }
 }
