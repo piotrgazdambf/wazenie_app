@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -373,8 +372,6 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         const Duration(seconds: 20),
         onTimeout: () => throw TimeoutException('Przekroczono czas zapisu (20s). Sprawdź połączenie.'),
       );
-      // Backup PDF do Firebase Storage
-      _uploadPdfBackup(pdfData, d);
       if (mounted) {
         await _showPdfDialog(pdfData);
         if (mounted) context.go('/pls');
@@ -720,17 +717,6 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       stanOpak: _stanOpak,
       stanAuto: _stanAuto,
     );
-  }
-
-  void _uploadPdfBackup(KwPdfData pdfData, WsgInputData d) {
-    KwPdfGenerator.generate(pdfData).then((bytes) {
-      final year = d.data.year.toString();
-      final lot  = d.lotBase.replaceAll('/', '_');
-      FirebaseStorage.instance
-          .ref('karty_wazenia/$year/$lot.pdf')
-          .putData(bytes, SettableMetadata(contentType: 'application/pdf'))
-          .catchError((Object _) => throw _); // wymagane przez API
-    }).catchError((Object _) {});
   }
 
   Future<void> _showPdfDialog(KwPdfData pdfData) async {
