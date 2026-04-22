@@ -251,7 +251,14 @@ class _PlsCard extends ConsumerWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                // Drukuj (zawsze dostępny)
+                // Podgląd + Drukuj
+                IconButton(
+                  icon: const Icon(Icons.visibility_outlined, size: 20),
+                  tooltip: 'Podgląd karty ważenia',
+                  color: AppTheme.textSecondary,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _podglad(context),
+                ),
                 IconButton(
                   icon: const Icon(Icons.print_outlined, size: 20),
                   tooltip: 'Drukuj kartę',
@@ -301,6 +308,36 @@ class _PlsCard extends ConsumerWidget {
       ),
       builder: (_) => _PlsDetailSheet(entry: entry),
     );
+  }
+
+  Future<void> _podglad(BuildContext context) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection(AppConstants.colDeliveries)
+          .doc(entry.id)
+          .get();
+      if (!snap.exists || !context.mounted) return;
+      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text('Podgląd KW: ${entry.lot}')),
+          body: PdfPreview(
+            pdfFileName: 'KW_${entry.id}',
+            build: (_) => KwPdfGenerator.generate(pdfData),
+            allowPrinting: true,
+            allowSharing: true,
+            canChangePageFormat: false,
+            canDebug: false,
+          ),
+        ),
+      ));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd podglądu: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
   }
 
   Future<void> _drukuj(BuildContext context) async {
@@ -621,32 +658,74 @@ class _PlsDetailSheet extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // Przycisk druku
-          OutlinedButton.icon(
-            icon: const Icon(Icons.print_outlined),
-            label: const Text('Drukuj kartę KW'),
-            onPressed: () async {
-              try {
-                final snap = await FirebaseFirestore.instance
-                    .collection(AppConstants.colDeliveries)
-                    .doc(entry.id)
-                    .get();
-                if (snap.exists && context.mounted) {
-                  final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
-      await Printing.layoutPdf(
-        name: 'KW_${snap.id}',
-        onLayout: (_) => KwPdfGenerator.generate(pdfData),
-      );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Błąd druku: $e'),
-                        backgroundColor: AppTheme.errorRed),
-                  );
-                }
-              }
-            },
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: const Text('Podgląd karty KW'),
+                  onPressed: () async {
+                    try {
+                      final snap = await FirebaseFirestore.instance
+                          .collection(AppConstants.colDeliveries)
+                          .doc(entry.id)
+                          .get();
+                      if (!snap.exists || !context.mounted) return;
+                      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => Scaffold(
+                          appBar: AppBar(title: Text('Podgląd KW: ${entry.lot}')),
+                          body: PdfPreview(
+                            pdfFileName: 'KW_${entry.id}',
+                            build: (_) => KwPdfGenerator.generate(pdfData),
+                            allowPrinting: true,
+                            allowSharing: true,
+                            canChangePageFormat: false,
+                            canDebug: false,
+                          ),
+                        ),
+                      ));
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Błąd podglądu: $e'),
+                              backgroundColor: AppTheme.errorRed),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Drukuj kartę KW'),
+                  onPressed: () async {
+                    try {
+                      final snap = await FirebaseFirestore.instance
+                          .collection(AppConstants.colDeliveries)
+                          .doc(entry.id)
+                          .get();
+                      if (snap.exists && context.mounted) {
+                        final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
+                        await Printing.layoutPdf(
+                          name: 'KW_${snap.id}',
+                          onLayout: (_) => KwPdfGenerator.generate(pdfData),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Błąd druku: $e'),
+                              backgroundColor: AppTheme.errorRed),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ],
       ),

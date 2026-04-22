@@ -78,13 +78,14 @@ class KwCalculations {
     required double wagaJednejDrew,
     required double wagaJednejPlast,
     required double zwrotPct,
+    double odpadPct = 0,
   }) {
     final mianownik = totalDrew * wagaJednejDrew + totalPlast * wagaJednejPlast;
     if (mianownik <= 0) return 0;
     final base = wagaNettoTotal *
         (skrzDrew * wagaJednejDrew + skrzPlast * wagaJednejPlast) /
         mianownik;
-    return base * (1 - zwrotPct / 100);
+    return base * (1 - zwrotPct / 100) * (1 - odpadPct / 100);
   }
 
   /// ODPAD kg = odpadPct/100 × wagaNetto.

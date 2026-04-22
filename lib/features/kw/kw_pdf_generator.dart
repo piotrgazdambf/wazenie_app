@@ -322,7 +322,9 @@ class KwPdfGenerator {
                   pw.Container(padding: padH, child: pw.Text(nazwaTxt, style: sB9)),
                   pw.Container(
                     padding: padH,
-                    child: !hasO ? pw.SizedBox() : pw.Row(children: [
+                    child: !hasO ? pw.SizedBox() : pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
                       // Tylko drewniane
                       if (hasDrew && !hasPlast) ...[
                         pw.Text('Ilość skrzyń drewnianych: ', style: sR9),
@@ -335,14 +337,18 @@ class KwPdfGenerator {
                       ],
                       // Oba rodzaje
                       if (hasDrew && hasPlast) ...[
-                        pw.Text('Ilość skrzyń  |  Drewnianych: ', style: sR9),
+                        pw.Text('Ilość skrzyń', style: sR9),
+                        _vSep(),
+                        pw.Text('Drewnianych: ', style: sR9),
                         pw.Text('${o!.drewIl}', style: sB9),
-                        pw.Text('  |  Plastikowych: ', style: sR9),
+                        _vSep(),
+                        pw.Text('Plastikowych: ', style: sR9),
                         pw.Text('${o.plastIl}', style: sB9),
                       ],
                       // Zwrot (tylko jeśli > 0)
                       if (hasZwrot) ...[
-                        pw.Text('  |  Zwrot: ', style: sR9),
+                        _vSep(),
+                        pw.Text('Zwrot: ', style: sR9),
                         pw.Text('${o!.zwrotPct}%', style: sB9),
                       ],
                     ]),
@@ -543,6 +549,12 @@ class KwPdfGenerator {
         pw.Container(padding: pad, child: pw.Text(val, style: bs)),
       ]);
 
+  static pw.Widget _vSep() => pw.Container(
+    width: 0.5,
+    margin: const pw.EdgeInsets.symmetric(horizontal: 5),
+    color: PdfColors.black,
+  );
+
   // Wiersz skrzyń: jeśli ilość == 0 → pusta prawa komórka
   static pw.TableRow _w3skrzynie(String num, String desc,
       int il, double wagaJedn, double tara,
@@ -554,15 +566,17 @@ class KwPdfGenerator {
           padding: pad,
           child: il == 0
               ? pw.SizedBox()
-              : pw.Row(children: [
-                  pw.Text('$il', style: bs),
-                  pw.Text('  |  ', style: s),
-                  pw.Text('WAGA/szt: ', style: s),
-                  pw.Text('${wagaJedn.toStringAsFixed(0)} kg', style: bs),
-                  pw.Text('  |  ', style: s),
-                  pw.Text('TARA: ', style: s),
-                  pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
-                ]),
+              : pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  children: [
+                    pw.Text('$il', style: bs),
+                    _vSep(),
+                    pw.Text('WAGA/szt: ', style: s),
+                    pw.Text('${wagaJedn.toStringAsFixed(0)} kg', style: bs),
+                    _vSep(),
+                    pw.Text('TARA: ', style: s),
+                    pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
+                  ]),
         ),
       ]);
 

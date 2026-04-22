@@ -152,6 +152,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         wagaJednejDrew:  wDrew,
         wagaJednejPlast: wPlast,
         zwrotPct:  _p(o.zwrotCtrl.text),
+        odpadPct:  _p(o.odpadCtrl.text),
       );
     }
 
