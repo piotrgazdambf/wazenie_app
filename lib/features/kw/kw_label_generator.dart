@@ -26,10 +26,10 @@ class KwLabelData {
 }
 
 class KwLabelGenerator {
-  /// Generuje PDF z etykietami — jedna strona 100×100mm na każdą etykietę.
   static Future<Uint8List> generate(List<KwLabelData> labels) async {
-    final doc  = pw.Document();
+    final doc   = pw.Document();
     final fontB = await PdfGoogleFonts.notoSansBold();
+    final fontR = await PdfGoogleFonts.notoSansRegular();
 
     for (final d in labels) {
       final qrBytes = await _qrPngBytes(d.lot);
@@ -40,8 +40,13 @@ class KwLabelGenerator {
           100 * PdfPageFormat.mm,
           100 * PdfPageFormat.mm,
         ),
-        margin: const pw.EdgeInsets.all(5 * PdfPageFormat.mm),
-        build: (_) => _buildLabel(d, qrImage, fontB),
+        margin: const pw.EdgeInsets.fromLTRB(
+          4 * PdfPageFormat.mm,
+          4 * PdfPageFormat.mm,
+          4 * PdfPageFormat.mm,
+          4 * PdfPageFormat.mm,
+        ),
+        build: (_) => _buildLabel(d, qrImage, fontB, fontR),
       ));
     }
 
@@ -52,71 +57,105 @@ class KwLabelGenerator {
     KwLabelData d,
     pw.MemoryImage qrImage,
     pw.Font fontB,
+    pw.Font fontR,
   ) {
-    final sB7  = pw.TextStyle(font: fontB, fontSize: 7);
-    final sB12 = pw.TextStyle(font: fontB, fontSize: 12);
-    final sB16 = pw.TextStyle(font: fontB, fontSize: 16);
+    final NAVY = PdfColor.fromHex('#1a3566');
+
+    final sB11 = pw.TextStyle(font: fontB, fontSize: 11);
+    final sB13 = pw.TextStyle(font: fontB, fontSize: 13);
+    final sB20 = pw.TextStyle(font: fontB, fontSize: 20, color: PdfColors.white);
+
+    // Szerokość boczna (QR ma ~58% szerokości, tekst boczny ~21% z każdej strony)
+    const sideW = 18.0 * PdfPageFormat.mm;
 
     return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.center,
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        // ── Odmiana ──────────────────────────────────────────────────────────
-        pw.Text(
-          d.odmiana.isNotEmpty ? d.odmiana : '—',
-          style: sB16,
-          textAlign: pw.TextAlign.center,
-        ),
-        pw.SizedBox(height: 3),
 
-        // ── QR + boczne napisy ────────────────────────────────────────────────
+        // ── ODMIANA (header navy) ──────────────────────────────────────────────
+        pw.Container(
+          color: NAVY,
+          padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+          child: pw.Text(
+            d.odmiana.isNotEmpty ? d.odmiana : '—',
+            style: sB20,
+            textAlign: pw.TextAlign.center,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+
+        // ── ŚRODEK: boczny tekst + QR ─────────────────────────────────────────
         pw.Expanded(
-          child: pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
+          child: pw.Stack(
+            overflow: pw.Overflow.visible,
             children: [
-              // Lewa: LOT (czytany od dołu do góry)
-              pw.SizedBox(
-                width: 13,
+              // QR code — wyśrodkowany z marginesami bocznymi
+              pw.Positioned(
+                left: sideW,
+                right: sideW,
+                top: 0,
+                bottom: 0,
                 child: pw.Center(
-                  child: pw.Transform.rotate(
-                    angle: math.pi / 2,
-                    child: pw.Text(d.lot, style: sB7),
-                  ),
-                ),
-              ),
-              // QR code
-              pw.Expanded(
-                child: pw.Padding(
-                  padding: const pw.EdgeInsets.all(2),
                   child: pw.Image(qrImage, fit: pw.BoxFit.contain),
                 ),
               ),
-              // Prawa: data (czytana od góry do dołu)
-              pw.SizedBox(
-                width: 13,
-                child: pw.Center(
-                  child: pw.Transform.rotate(
-                    angle: -math.pi / 2,
-                    child: pw.Text(d.data, style: sB7),
+
+              // Lewy tekst: LOT (rotacja CCW — czytasz od dołu do góry)
+              pw.Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: pw.Container(
+                  width: sideW,
+                  child: pw.Center(
+                    child: pw.Transform.rotate(
+                      angle: math.pi / 2,
+                      child: pw.Text(
+                        d.lot,
+                        style: sB11,
+                        textAlign: pw.TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Prawy tekst: DATA (rotacja CW — czytasz od góry do dołu)
+              pw.Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: pw.Container(
+                  width: sideW,
+                  child: pw.Center(
+                    child: pw.Transform.rotate(
+                      angle: -math.pi / 2,
+                      child: pw.Text(
+                        d.data,
+                        style: sB11,
+                        textAlign: pw.TextAlign.center,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
-        pw.SizedBox(height: 3),
+        pw.SizedBox(height: 4),
 
-        // ── Dostawca ──────────────────────────────────────────────────────────
+        // ── DOSTAWCA ──────────────────────────────────────────────────────────
         pw.Text(
           '${d.dostawcaKod} — ${d.dostawca}',
-          style: sB12,
+          style: sB13,
           textAlign: pw.TextAlign.center,
         ),
         pw.SizedBox(height: 2),
 
-        // ── Przeznaczenie ─────────────────────────────────────────────────────
+        // ── PRZEZNACZENIE ─────────────────────────────────────────────────────
         pw.Text(
           'Przeznaczenie: ${d.przeznaczenie}',
-          style: sB12,
+          style: sB13,
           textAlign: pw.TextAlign.center,
         ),
       ],
@@ -131,7 +170,7 @@ class KwLabelGenerator {
       color: const Color(0xFF000000),
       emptyColor: const Color(0xFFFFFFFF),
     );
-    final img      = await painter.toImage(400);
+    final img      = await painter.toImage(500);
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
   }

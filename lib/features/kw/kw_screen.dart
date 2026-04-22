@@ -650,8 +650,39 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             const SizedBox(height: 8),
             _NumField('PW (kaliber ↓68 mm) [%]', o.pwCtrl, required: true),
           ],
+          const SizedBox(height: 10),
+          // Przycisk etykiety — dostępny od razu
+          OutlinedButton.icon(
+            icon: const Icon(Icons.label_outline, size: 16),
+            label: const Text('Drukuj etykietę'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 36),
+              textStyle: const TextStyle(fontSize: 13),
+            ),
+            onPressed: () => _drukujEtykieteOdmiany(idx, o),
+          ),
         ],
       ),
+    );
+  }
+
+  Future<void> _drukujEtykieteOdmiany(int idx, _OdmCtrl o) async {
+    final d       = widget.data;
+    final total   = _odm.length;
+    final dateStr = '${d.data.day.toString().padLeft(2,'0')}.${d.data.month.toString().padLeft(2,'0')}.${d.data.year}';
+    final label   = KwLabelData(
+      lot:           d.lotForOdmiana(idx, total),
+      odmiana:       o.nazwaCtrl.text.trim().isNotEmpty
+                         ? o.nazwaCtrl.text.trim()
+                         : 'Odmiana ${idx + 1}',
+      data:          dateStr,
+      dostawca:      d.dostawcaNazwa,
+      dostawcaKod:   d.dostawcaKod,
+      przeznaczenie: d.przeznaczenie,
+    );
+    await Printing.layoutPdf(
+      name: 'Etykieta_${label.lot}',
+      onLayout: (_) => KwLabelGenerator.generate([label]),
     );
   }
 
