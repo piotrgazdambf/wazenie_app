@@ -6,8 +6,7 @@ import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../core/offline/hive_buffer.dart';
 import '../../core/offline/offline_entry.dart';
-import 'package:printing/printing.dart';
-import '../kw/kw_pdf_generator.dart';
+import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -176,8 +175,11 @@ class _PlsCard extends ConsumerWidget {
   final PlsEntry entry;
   const _PlsCard({required this.entry});
 
+
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin     = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
     final statusColor = _statusColor(entry.status);
     final statusLabel = _statusLabel(entry.status);
 
@@ -185,7 +187,7 @@ class _PlsCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _showDetail(context),
+        onTap: () => _showDetail(context, isAdmin: isAdmin),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -247,25 +249,10 @@ class _PlsCard extends ConsumerWidget {
               ),
             ],
 
-            // Akcje
+            // Akcje statusowe
             const SizedBox(height: 8),
             Row(
               children: [
-                // Podgląd + Drukuj
-                IconButton(
-                  icon: const Icon(Icons.visibility_outlined, size: 20),
-                  tooltip: 'Podgląd karty ważenia',
-                  color: AppTheme.textSecondary,
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _podglad(context),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.print_outlined, size: 20),
-                  tooltip: 'Drukuj kartę',
-                  color: AppTheme.textSecondary,
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _drukuj(context),
-                ),
                 const Spacer(),
                 if (entry.status == 'PRZYJETO')
                   TextButton.icon(
@@ -298,7 +285,7 @@ class _PlsCard extends ConsumerWidget {
     );
   }
 
-  void _showDetail(BuildContext context) {
+  void _showDetail(BuildContext context, {required bool isAdmin}) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -306,60 +293,8 @@ class _PlsCard extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _PlsDetailSheet(entry: entry),
+      builder: (_) => _PlsDetailSheet(entry: entry, isAdmin: isAdmin),
     );
-  }
-
-  Future<void> _podglad(BuildContext context) async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection(AppConstants.colDeliveries)
-          .doc(entry.id)
-          .get();
-      if (!snap.exists || !context.mounted) return;
-      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: Text('Podgląd KW: ${entry.lot}')),
-          body: PdfPreview(
-            pdfFileName: 'KW_${entry.id}',
-            build: (_) => KwPdfGenerator.generate(pdfData),
-            maxPageWidth: 520,
-            allowPrinting: true,
-            allowSharing: true,
-            canChangePageFormat: false,
-            canDebug: false,
-          ),
-        ),
-      ));
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd podglądu: $e'), backgroundColor: AppTheme.errorRed),
-        );
-      }
-    }
-  }
-
-  Future<void> _drukuj(BuildContext context) async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection(AppConstants.colDeliveries)
-          .doc(entry.id)
-          .get();
-      if (!snap.exists) return;
-      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
-      await Printing.layoutPdf(
-        name: 'KW_${snap.id}',
-        onLayout: (_) => KwPdfGenerator.generate(pdfData),
-      );
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd druku: $e'), backgroundColor: AppTheme.errorRed),
-        );
-      }
-    }
   }
 
   Future<void> _przeslijDoStanow(BuildContext context, WidgetRef ref) async {
@@ -563,177 +498,233 @@ class _InfoRow extends StatelessWidget {
 
 // ── Arkusz szczegółów dostawy ─────────────────────────────────────────────────
 
-class _PlsDetailSheet extends StatelessWidget {
+class _PlsDetailSheet extends StatefulWidget {
   final PlsEntry entry;
-  const _PlsDetailSheet({required this.entry});
+  final bool isAdmin;
+  const _PlsDetailSheet({required this.entry, required this.isAdmin});
+
+  @override
+  State<_PlsDetailSheet> createState() => _PlsDetailSheetState();
+}
+
+class _PlsDetailSheetState extends State<_PlsDetailSheet> {
+  bool _editing = false;
+  bool _saving  = false;
+
+  late final TextEditingController _brixCtrl;
+  late final TextEditingController _odpadCtrl;
+  late final TextEditingController _twardCtrl;
+  late final TextEditingController _kaliberCtrl;
+  late final TextEditingController _zwrotCtrl;
+  late final TextEditingController _wagaNettoCtrl;
+  late String _status;
+
+  @override
+  void initState() {
+    super.initState();
+    final e      = widget.entry;
+    _brixCtrl    = TextEditingController(text: e.brix);
+    _odpadCtrl   = TextEditingController(text: e.odpad);
+    _twardCtrl   = TextEditingController(text: e.twardosc);
+    _kaliberCtrl = TextEditingController(text: e.kaliber);
+    _zwrotCtrl   = TextEditingController(text: e.zwrotPct);
+    _wagaNettoCtrl = TextEditingController(text: e.wagaNetto);
+    _status      = e.status;
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_brixCtrl, _odpadCtrl, _twardCtrl, _kaliberCtrl, _zwrotCtrl, _wagaNettoCtrl]) c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection(AppConstants.colDeliveries)
+          .doc(widget.entry.id)
+          .update({
+        'brix':       _brixCtrl.text.trim(),
+        'odpad':      _odpadCtrl.text.trim(),
+        'twardosc':   _twardCtrl.text.trim(),
+        'kaliber':    _kaliberCtrl.text.trim(),
+        'zwrot_pct':  _zwrotCtrl.text.trim(),
+        'waga_netto': _wagaNettoCtrl.text.trim(),
+        'status':     _status,
+      });
+      if (mounted) {
+        setState(() { _editing = false; _saving = false; });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Zapisano zmiany'), backgroundColor: AppTheme.successGreen));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Błąd: $e'), backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = switch (entry.status.toUpperCase()) {
+    final e = widget.entry;
+    final statusColor = switch (e.status.toUpperCase()) {
       'PRZYJETO'   => AppTheme.warningOrange,
       'PRZESŁANO'  => AppTheme.successGreen,
       'ROZLICZONO' => AppTheme.textSecondary,
       _            => AppTheme.textSecondary,
     };
-    final statusLabel = switch (entry.status.toUpperCase()) {
-      'PRZYJETO'   => 'Przyjęto',
-      'PRZESŁANO'  => 'Przesłano',
-      'ROZLICZONO' => 'Rozliczono',
-      _            => entry.status,
-    };
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.75,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      builder: (_, ctrl) => ListView(
-        controller: ctrl,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40, height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: AppTheme.borderLight,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Nagłówek — LOT + status
-          Row(children: [
-            Expanded(
-              child: Text(
-                entry.lot.isNotEmpty ? entry.lot : entry.id,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryDark, fontFamily: 'monospace'),
-              ),
-            ),
-            if (entry.status.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: statusColor.withAlpha(25),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: statusColor.withAlpha(80)),
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.97,
+      builder: (_, ctrl) => Column(children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Column(children: [
+            Center(child: Container(width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(color: AppTheme.borderLight, borderRadius: BorderRadius.circular(2)))),
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(e.lot.isNotEmpty ? e.lot : e.id,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800,
+                        color: AppTheme.primaryDark, fontFamily: 'monospace')),
+                Text('${e.data}  •  Dostawa ${e.nrDostawy}',
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              ])),
+              if (e.status.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: statusColor.withAlpha(25), borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: statusColor.withAlpha(80))),
+                  child: Text(e.status, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w700)),
                 ),
-                child: Text(statusLabel,
-                    style: TextStyle(color: statusColor, fontSize: 12,
-                        fontWeight: FontWeight.w700)),
-              ),
+              if (widget.isAdmin) ...[
+                const SizedBox(width: 8),
+                _editing
+                    ? Row(children: [
+                        TextButton(onPressed: _saving ? null : () => setState(() => _editing = false),
+                            child: const Text('Anuluj')),
+                        ElevatedButton(
+                          onPressed: _saving ? null : _save,
+                          style: ElevatedButton.styleFrom(minimumSize: const Size(80, 36)),
+                          child: _saving
+                              ? const SizedBox(width: 16, height: 16,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('Zapisz'),
+                        ),
+                      ])
+                    : IconButton(
+                        icon: const Icon(Icons.edit_outlined, color: AppTheme.primaryMid),
+                        tooltip: 'Edytuj (admin)',
+                        onPressed: () => setState(() => _editing = true),
+                      ),
+              ],
+            ]),
           ]),
-          const SizedBox(height: 16),
-
-          // Dane dostawy
-          _DetailSection('DANE DOSTAWY', [
-            _DetailRow('Nr dostawy', entry.nrDostawy),
-            _DetailRow('Data', entry.data),
-            _DetailRow('Dostawca', entry.dostawca),
-            _DetailRow('Owoc', _cap(entry.owoc)),
-            if (entry.odmiana.isNotEmpty) _DetailRow('Odmiana', entry.odmiana),
-            _DetailRow('Przeznaczenie', entry.przeznaczenie),
-          ]),
-          const SizedBox(height: 12),
-
-          // Skrzynie + waga
-          _DetailSection('SKRZYNIE & WAGA', [
-            if (entry.skrzynie.isNotEmpty) _DetailRow('Skrzynie (drew/plast)', entry.skrzynie),
-            if (entry.wagaNetto.isNotEmpty) _DetailRow('Waga netto', '${entry.wagaNetto} kg', bold: true),
-          ]),
-
-          // Parametry jakości
-          if (entry.brix.isNotEmpty || entry.odpad.isNotEmpty ||
-              entry.twardosc.isNotEmpty || entry.kaliber.isNotEmpty) ...[
+        ),
+        const Divider(height: 16),
+        Expanded(child: ListView(
+          controller: ctrl,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+          children: [
+            _DetailSection('DANE DOSTAWY', [
+              _DetailRow('Dostawca', e.dostawca),
+              _DetailRow('Owoc', e.owoc),
+              if (e.odmiana.isNotEmpty) _DetailRow('Odmiana', e.odmiana),
+              _DetailRow('Przeznaczenie', e.przeznaczenie),
+            ]),
+            const SizedBox(height: 12),
+            _DetailSection('WAGI', [
+              if (e.wagaBrutto.isNotEmpty) _DetailRow('Brutto', '${e.wagaBrutto} kg'),
+              _editing
+                  ? _PlsEditRow('Netto', _wagaNettoCtrl, suffix: 'kg')
+                  : _DetailRow('Netto', '${e.wagaNetto} kg', bold: true),
+              if (e.skrzynie.isNotEmpty) _DetailRow('Skrzynie (D/P)', e.skrzynie),
+            ]),
             const SizedBox(height: 12),
             _DetailSection('PARAMETRY JAKOŚCI', [
-              if (entry.brix.isNotEmpty) _DetailRow('BRIX', entry.brix),
-              if (entry.odpad.isNotEmpty) _DetailRow('Odpad', '${entry.odpad}%'),
-              if (entry.twardosc.isNotEmpty) _DetailRow('Twardość', entry.twardosc),
-              if (entry.kaliber.isNotEmpty) _DetailRow('Kaliber', '${entry.kaliber}%'),
+              _editing ? _PlsEditRow('BRIX', _brixCtrl)
+                  : _DetailRow('BRIX', e.brix.isNotEmpty ? e.brix : '—'),
+              _editing ? _PlsEditRow('Odpad %', _odpadCtrl, suffix: '%')
+                  : _DetailRow('Odpad', e.odpad.isNotEmpty ? '${e.odpad}%' : '—'),
+              _editing ? _PlsEditRow('Twardość', _twardCtrl)
+                  : _DetailRow('Twardość', e.twardosc.isNotEmpty ? e.twardosc : '—'),
+              _editing ? _PlsEditRow('PW %', _kaliberCtrl, suffix: '%')
+                  : _DetailRow('PW (kaliber)', e.kaliber.isNotEmpty ? '${e.kaliber}%' : '—'),
+              _editing ? _PlsEditRow('Zwrot %', _zwrotCtrl, suffix: '%')
+                  : _DetailRow('Zwrot', e.zwrotPct.isNotEmpty ? '${e.zwrotPct}%' : '—'),
             ]),
-          ],
-
-          const SizedBox(height: 20),
-
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: const Text('Podgląd karty KW'),
-                  onPressed: () async {
-                    try {
-                      final snap = await FirebaseFirestore.instance
-                          .collection(AppConstants.colDeliveries)
-                          .doc(entry.id)
-                          .get();
-                      if (!snap.exists || !context.mounted) return;
-                      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
-                      Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(title: Text('Podgląd KW: ${entry.lot}')),
-                          body: PdfPreview(
-                            pdfFileName: 'KW_${entry.id}',
-                            build: (_) => KwPdfGenerator.generate(pdfData),
-                            allowPrinting: true,
-                            allowSharing: true,
-                            canChangePageFormat: false,
-                            canDebug: false,
-                          ),
-                        ),
-                      ));
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Błąd podglądu: $e'),
-                              backgroundColor: AppTheme.errorRed),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text('Drukuj kartę KW'),
-                  onPressed: () async {
-                    try {
-                      final snap = await FirebaseFirestore.instance
-                          .collection(AppConstants.colDeliveries)
-                          .doc(entry.id)
-                          .get();
-                      if (snap.exists && context.mounted) {
-                        final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
-                        await Printing.layoutPdf(
-                          name: 'KW_${snap.id}',
-                          onLayout: (_) => KwPdfGenerator.generate(pdfData),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Błąd druku: $e'),
-                              backgroundColor: AppTheme.errorRed),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ),
+            if (_editing && widget.isAdmin) ...[
+              const SizedBox(height: 12),
+              _DetailSection('STATUS', [
+                _PlsStatusSelector(current: _status, onChanged: (s) => setState(() => _status = s)),
+              ]),
             ],
-          ),
-        ],
-      ),
+          ],
+        )),
+      ]),
     );
   }
+}
 
-  String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+class _PlsEditRow extends StatelessWidget {
+  final String label;
+  final TextEditingController ctrl;
+  final String? suffix;
+  const _PlsEditRow(this.label, this.ctrl, {this.suffix});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(children: [
+      SizedBox(width: 120, child: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+      Expanded(child: TextFormField(
+        controller: ctrl,
+        decoration: InputDecoration(isDense: true,
+            suffix: suffix != null ? Text(suffix!) : null,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
+        keyboardType: TextInputType.number,
+      )),
+    ]),
+  );
+}
+
+class _PlsStatusSelector extends StatelessWidget {
+  final String current;
+  final ValueChanged<String> onChanged;
+  const _PlsStatusSelector({required this.current, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    const statuses = ['PRZYJETO', 'PRZESŁANO', 'ROZLICZONO'];
+    return Row(children: statuses.map((s) {
+      final sel = s == current;
+      return Expanded(child: Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: GestureDetector(
+          onTap: () => onChanged(s),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: sel ? AppTheme.primaryDark.withAlpha(15) : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: sel ? AppTheme.primaryDark : AppTheme.borderLight, width: sel ? 1.5 : 1),
+            ),
+            child: Text(s, textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10,
+                    fontWeight: sel ? FontWeight.w700 : FontWeight.normal,
+                    color: sel ? AppTheme.primaryDark : AppTheme.textSecondary)),
+          ),
+        ),
+      ));
+    }).toList());
+  }
 }
 
 class _DetailSection extends StatelessWidget {

@@ -2,10 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../kw/kw_pdf_generator.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -182,85 +184,147 @@ class _KartyScreenState extends ConsumerState<KartyScreen> {
 
 // ── Karta w liście ────────────────────────────────────────────────────────────
 
-class _KartaCard extends StatelessWidget {
+class _KartaCard extends ConsumerWidget {
   final KartaEntry entry;
   final bool isAdmin;
   const _KartaCard({required this.entry, required this.isAdmin});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor(entry.status);
     final typeColor   = entry.isKwg ? AppTheme.primaryLight : AppTheme.primaryMid;
     final typeLabel   = entry.isKwg ? 'KWG' : 'KW';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-          builder: (_) => _KartaDetailSheet(entry: entry, isAdmin: isAdmin),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: typeColor.withAlpha(20),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: typeColor.withAlpha(60)),
-                  ),
-                  child: Text(typeLabel,
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: typeColor)),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(entry.lot,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: AppTheme.primaryDark,
-                          fontFamily: 'monospace')),
-                ),
-                if (entry.status.isNotEmpty)
-                  _StatusChip(
-                      label: _statusLabel(entry.status),
-                      color: statusColor),
-              ]),
-              const SizedBox(height: 6),
-              _InfoRow(Icons.eco_outlined,
-                  '${_cap(entry.owoc)}${entry.odmiana.isNotEmpty ? " • ${entry.odmiana}" : ""}'),
-              _InfoRow(Icons.business_outlined, entry.dostawca),
-              _InfoRow(Icons.calendar_today_outlined,
-                  '${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
-              if (entry.wagaNetto.isNotEmpty)
-                _InfoRow(Icons.scale_outlined,
-                    'Netto: ${entry.wagaNetto} kg  •  Skrz: ${entry.skrzynie}'),
-              const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text('Dotknij aby zobaczyć kartę',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.textSecondary.withAlpha(140))),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Nagłówek — kliknięcie otwiera surowe dane
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                useSafeArea: true,
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                builder: (_) => _KartaDetailSheet(entry: entry, isAdmin: isAdmin),
               ),
-            ],
-          ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: typeColor.withAlpha(20),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: typeColor.withAlpha(60)),
+                      ),
+                      child: Text(typeLabel,
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: typeColor)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(entry.lot,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14,
+                              color: AppTheme.primaryDark, fontFamily: 'monospace')),
+                    ),
+                    if (entry.status.isNotEmpty)
+                      _StatusChip(label: _statusLabel(entry.status), color: statusColor),
+                  ]),
+                  const SizedBox(height: 6),
+                  _InfoRow(Icons.eco_outlined,
+                      '${_cap(entry.owoc)}${entry.odmiana.isNotEmpty ? " • ${entry.odmiana}" : ""}'),
+                  _InfoRow(Icons.business_outlined, entry.dostawca),
+                  _InfoRow(Icons.calendar_today_outlined,
+                      '${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
+                  if (entry.wagaNetto.isNotEmpty)
+                    _InfoRow(Icons.scale_outlined,
+                        'Netto: ${entry.wagaNetto} kg  •  Skrz: ${entry.skrzynie}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Przyciski PDF
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  label: const Text('Podgląd'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(fontSize: 13),
+                  ),
+                  onPressed: () => _podglad(context),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.print_outlined, size: 16),
+                  label: const Text('Drukuj'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(fontSize: 13),
+                  ),
+                  onPressed: () => _drukuj(context),
+                ),
+              ),
+            ]),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _podglad(BuildContext context) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection(AppConstants.colDeliveries).doc(entry.id).get();
+      if (!snap.exists || !context.mounted) return;
+      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text('Podgląd KW: ${entry.lot}')),
+          body: PdfPreview(
+            pdfFileName: 'KW_${entry.id}',
+            build: (_) => KwPdfGenerator.generate(pdfData),
+            maxPageWidth: 520,
+            allowPrinting: true,
+            allowSharing: true,
+            canChangePageFormat: false,
+            canDebug: false,
+          ),
+        ),
+      ));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd podglądu: $e'), backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
+
+  Future<void> _drukuj(BuildContext context) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection(AppConstants.colDeliveries).doc(entry.id).get();
+      if (!snap.exists) return;
+      final pdfData = KwPdfData.fromFirestoreMap(snap.data()!);
+      await Printing.layoutPdf(
+        name: 'KW_${snap.id}',
+        onLayout: (_) => KwPdfGenerator.generate(pdfData),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd druku: $e'), backgroundColor: AppTheme.errorRed));
+      }
+    }
   }
 
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
