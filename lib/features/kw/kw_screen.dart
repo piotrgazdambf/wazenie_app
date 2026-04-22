@@ -9,6 +9,7 @@ import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../core/models/kw_data.dart';
+import 'kw_label_generator.dart';
 import 'kw_pdf_generator.dart';
 
 // ── Pomocnicza klasa kontrolerów odmiany ──────────────────────────────────────
@@ -364,8 +365,9 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       });
     }
 
-    // Zbuduj dane PDF przed commitem (pola mogą zostać wyczyszczone)
-    final pdfData = _buildPdfData();
+    // Zbuduj dane PDF i etykiet przed commitem (pola mogą zostać wyczyszczone)
+    final pdfData    = _buildPdfData();
+    final labelData  = _buildLabels();
 
     try {
       await batch.commit().timeout(
@@ -373,7 +375,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         onTimeout: () => throw TimeoutException('Przekroczono czas zapisu (20s). Sprawdź połączenie.'),
       );
       if (mounted) {
-        await _showPdfDialog(pdfData);
+        await _showSaveDialog(pdfData, labelData);
         if (mounted) context.go('/pls');
       }
     } catch (e) {
@@ -719,31 +721,59 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     );
   }
 
-  Future<void> _showPdfDialog(KwPdfData pdfData) async {
-    final print = await showDialog<bool>(
+  List<KwLabelData> _buildLabels() {
+    final d       = widget.data;
+    final total   = _odm.length;
+    final dateStr = '${d.data.day.toString().padLeft(2,'0')}.${d.data.month.toString().padLeft(2,'0')}.${d.data.year}';
+    return List.generate(total, (i) {
+      final o = _odm[i];
+      return KwLabelData(
+        lot:           d.lotForOdmiana(i, total),
+        odmiana:       o.nazwaCtrl.text.trim(),
+        data:          dateStr,
+        dostawca:      d.dostawcaNazwa,
+        dostawcaKod:   d.dostawcaKod,
+        przeznaczenie: d.przeznaczenie,
+      );
+    });
+  }
+
+  Future<void> _showSaveDialog(KwPdfData pdfData, List<KwLabelData> labels) async {
+    final choice = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         icon: const Icon(Icons.check_circle, color: AppTheme.successGreen, size: 48),
         title: const Text('Karta zapisana'),
-        content: const Text('Czy chcesz wydrukować kartę ważenia?'),
+        content: const Text('Co chcesz zrobić?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, 'skip'),
             child: const Text('Pomiń'),
           ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.label_outline, size: 18),
+            label: const Text('Etykiety'),
+            onPressed: () => Navigator.pop(context, 'label'),
+          ),
           ElevatedButton.icon(
-            icon: const Icon(Icons.print_outlined),
-            label: const Text('Drukuj'),
-            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.print_outlined, size: 18),
+            label: const Text('Kartę KW'),
+            onPressed: () => Navigator.pop(context, 'kw'),
           ),
         ],
       ),
     );
-    if (print == true && mounted) {
+    if (!mounted) return;
+    if (choice == 'kw') {
       await Printing.layoutPdf(
         name: 'KartaWazenia_${widget.data.nrDostawy}',
         onLayout: (_) => KwPdfGenerator.generate(pdfData),
+      );
+    } else if (choice == 'label') {
+      await Printing.layoutPdf(
+        name: 'Etykiety_${widget.data.nrDostawy}',
+        onLayout: (_) => KwLabelGenerator.generate(labels),
       );
     }
   }

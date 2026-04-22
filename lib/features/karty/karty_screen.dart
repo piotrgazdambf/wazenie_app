@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../kw/kw_label_generator.dart';
 import '../kw/kw_pdf_generator.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -249,29 +250,41 @@ class _KartaCard extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 10),
-            // Przyciski PDF
+            // Przyciski akcji
             Row(children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  icon: const Icon(Icons.visibility_outlined, size: 15),
                   label: const Text('Podgląd'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    textStyle: const TextStyle(fontSize: 13),
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    textStyle: const TextStyle(fontSize: 12),
                   ),
                   onPressed: () => _podglad(context),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: OutlinedButton.icon(
-                  icon: const Icon(Icons.print_outlined, size: 16),
+                  icon: const Icon(Icons.print_outlined, size: 15),
                   label: const Text('Drukuj'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    textStyle: const TextStyle(fontSize: 13),
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    textStyle: const TextStyle(fontSize: 12),
                   ),
                   onPressed: () => _drukuj(context),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.label_outline, size: 15),
+                  label: const Text('Etykieta'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  onPressed: () => _etykieta(context),
                 ),
               ),
             ]),
@@ -305,6 +318,36 @@ class _KartaCard extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Błąd podglądu: $e'), backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
+
+  Future<void> _etykieta(BuildContext context) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection(AppConstants.colDeliveries).doc(entry.id).get();
+      if (!snap.exists) return;
+      final d = snap.data()!;
+      final dateRaw = d['data'] as String? ?? '';
+      final dateStr = dateRaw.length == 10 && dateRaw[4] == '-'
+          ? '${dateRaw.substring(8)}.${dateRaw.substring(5,7)}.${dateRaw.substring(0,4)}'
+          : dateRaw;
+      final label = KwLabelData(
+        lot:           d['lot'] as String? ?? entry.lot,
+        odmiana:       d['odmiana'] as String? ?? entry.odmiana,
+        data:          dateStr,
+        dostawca:      d['dostawca'] as String? ?? entry.dostawca,
+        dostawcaKod:   d['dostawca_kod'] as String? ?? entry.dostawcaKod,
+        przeznaczenie: d['przeznaczenie'] as String? ?? entry.przeznaczenie,
+      );
+      await Printing.layoutPdf(
+        name: 'Etykieta_${entry.lot}',
+        onLayout: (_) => KwLabelGenerator.generate([label]),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd etykiety: $e'), backgroundColor: AppTheme.errorRed));
       }
     }
   }
