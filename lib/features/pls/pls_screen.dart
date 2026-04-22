@@ -324,6 +324,7 @@ class _PlsCard extends ConsumerWidget {
           body: PdfPreview(
             pdfFileName: 'KW_${entry.id}',
             build: (_) => KwPdfGenerator.generate(pdfData),
+            maxPageWidth: 520,
             allowPrinting: true,
             allowSharing: true,
             canChangePageFormat: false,
