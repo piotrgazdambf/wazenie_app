@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,17 +62,25 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   final _a2ZalCtrl  = TextEditingController();
   final _a2RozCtrl  = TextEditingController();
 
-  // Skrzynie
+  // Skrzynie dostawcy
   final _drewIlCtrl  = TextEditingController();
   final _drewWgCtrl  = TextEditingController(text: '20');
   final _plastIlCtrl = TextEditingController();
   final _plastWgCtrl = TextEditingController(text: '10');
 
+  // Skrzynie MB (własne MBF)
+  bool  _maMbSkrzynie  = false;
+  final _mbDrewIlCtrl  = TextEditingController();
+  final _mbDrewWgCtrl  = TextEditingController(text: '20');
+  final _mbPlastIlCtrl = TextEditingController();
+  final _mbPlastWgCtrl = TextEditingController(text: '10');
+
   // Wyniki (auto)
-  double _brutto   = 0;
-  double _taraDrew = 0;
-  double _taraPlast= 0;
-  double _netto    = 0;
+  double _brutto    = 0;
+  double _taraDrew  = 0;
+  double _taraPlast = 0;
+  double _taraMb    = 0;
+  double _netto     = 0;
 
   // Odmiany
   final List<_OdmCtrl> _odm = [_OdmCtrl()];
@@ -90,6 +99,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     final callers = [
       _a1ZalCtrl, _a1RozCtrl, _a2ZalCtrl, _a2RozCtrl,
       _drewIlCtrl, _drewWgCtrl, _plastIlCtrl, _plastWgCtrl,
+      _mbDrewIlCtrl, _mbDrewWgCtrl, _mbPlastIlCtrl, _mbPlastWgCtrl,
     ];
     for (final c in callers) {
       c.addListener(_recalc);
@@ -111,6 +121,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       _nrPojazduCtrl, _nrTelefonuCtrl,
       _a1ZalCtrl, _a1RozCtrl, _a2ZalCtrl, _a2RozCtrl,
       _drewIlCtrl, _drewWgCtrl, _plastIlCtrl, _plastWgCtrl,
+      _mbDrewIlCtrl, _mbDrewWgCtrl, _mbPlastIlCtrl, _mbPlastWgCtrl,
     ]) {
       c.dispose();
     }
@@ -137,10 +148,16 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     final wDrew  = _p(_drewWgCtrl.text);
     final wPlast = _p(_plastWgCtrl.text);
 
-    final brutto   = (a1z - a1r) + (a2z - a2r);
-    final taraDrew = tDrew * wDrew;
-    final taraPlast= tPlast * wPlast;
-    final netto    = brutto - taraDrew - taraPlast;
+    final mbDrew   = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
+    final mbPlast  = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
+    final wMbDrew  = _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0.0;
+    final wMbPlast = _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0.0;
+
+    final brutto    = (a1z - a1r) + (a2z - a2r);
+    final taraDrew  = tDrew  * wDrew;
+    final taraPlast = tPlast * wPlast;
+    final taraMb    = mbDrew * wMbDrew + mbPlast * wMbPlast;
+    final netto     = brutto - taraDrew - taraPlast - taraMb;
 
     for (final o in _odm) {
       o.wagaNetto = KwCalculations.wagaNettoOdmiany(
@@ -160,6 +177,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       _brutto    = brutto;
       _taraDrew  = taraDrew;
       _taraPlast = taraPlast;
+      _taraMb    = taraMb;
       _netto     = netto;
     });
   }
@@ -227,11 +245,15 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       final lot   = d.lotForOdmiana(i, total);
       final docId        = lot.replaceAll('/', '_');
       final skrz         = '${_pi(o.drewCtrl.text)}/${_pi(o.plastCtrl.text)}';
-      final drewWagaJedn = _p(_drewWgCtrl.text);
-      final plastWagaJedn= _p(_plastWgCtrl.text);
-      final drewCount    = _pi(o.drewCtrl.text);
-      final plastCount   = _pi(o.plastCtrl.text);
-      final dateStr      = '${d.data.year}-${d.data.month.toString().padLeft(2,'0')}-${d.data.day.toString().padLeft(2,'0')}';
+      final drewWagaJedn  = _p(_drewWgCtrl.text);
+      final plastWagaJedn = _p(_plastWgCtrl.text);
+      final drewCount     = _pi(o.drewCtrl.text);
+      final plastCount    = _pi(o.plastCtrl.text);
+      final mbDrewCount   = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
+      final mbPlastCount  = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
+      final mbDrewWaga    = _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0.0;
+      final mbPlastWaga   = _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0.0;
+      final dateStr       = '${d.data.year}-${d.data.month.toString().padLeft(2,'0')}-${d.data.day.toString().padLeft(2,'0')}';
 
       // deliveries
       final delRef = db.collection(AppConstants.colDeliveries).doc(docId);
@@ -265,6 +287,13 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'waga_a1_roz':       _p(_a1RozCtrl.text),
         'waga_a2_zal':       _drugiAut ? _p(_a2ZalCtrl.text) : 0,
         'waga_a2_roz':       _drugiAut ? _p(_a2RozCtrl.text) : 0,
+        // Skrzynie MB
+        if (_maMbSkrzynie) ...{
+          'mb_drew_il':    mbDrewCount,
+          'mb_drew_waga':  mbDrewWaga,
+          'mb_plast_il':   mbPlastCount,
+          'mb_plast_waga': mbPlastWaga,
+        },
         'status':            'PRZYJETO',
         'createdBy':         userId,
         'createdAt':         FieldValue.serverTimestamp(),
@@ -294,6 +323,33 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'createdAt':       FieldValue.serverTimestamp(),
       });
 
+      // crateState dla Skrzyń MB (osobny wpis informacyjny)
+      if (_maMbSkrzynie && (mbDrewCount + mbPlastCount) > 0) {
+        final mbRef = db.collection(AppConstants.colCrateStates).doc('${docId}_mb');
+        batch.set(mbRef, {
+          'lot':             '${lot}_MB',
+          'odmiana':         o.nazwaCtrl.text.trim(),
+          'owoc':            d.owoc,
+          'dostawca':        'Skrzynie MB',
+          'dostawca_kod':    'MB',
+          'przeznaczenie':   d.przeznaczenie,
+          'nr_dostawy':      d.nrDostawy,
+          'data':            dateStr,
+          'drew_total':      mbDrewCount,
+          'plast_total':     mbPlastCount,
+          'drew_remaining':  mbDrewCount,
+          'plast_remaining': mbPlastCount,
+          'drew_waga_jedn':  mbDrewWaga,
+          'plast_waga_jedn': mbPlastWaga,
+          'kg_total':        0,
+          'kg_remaining':    0,
+          'active':          true,
+          'is_mb':           true,
+          'is_kwg':          false,
+          'createdAt':       FieldValue.serverTimestamp(),
+        });
+      }
+
       // mcrQueue
       final mcrRef = db.collection(AppConstants.colMcrQueue).doc();
       batch.set(mcrRef, {
@@ -317,6 +373,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         const Duration(seconds: 20),
         onTimeout: () => throw TimeoutException('Przekroczono czas zapisu (20s). Sprawdź połączenie.'),
       );
+      // Backup PDF do Firebase Storage
+      _uploadPdfBackup(pdfData, d);
       if (mounted) {
         await _showPdfDialog(pdfData);
         if (mounted) context.go('/pls');
@@ -462,6 +520,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       title: 'Skrzynie',
       child: Column(
         children: [
+          // Skrzynie dostawcy
           Row(children: [
             Expanded(child: _NumField('Ilość skrzyń drew.', _drewIlCtrl)),
             const SizedBox(width: 8),
@@ -477,6 +536,36 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           ]),
           const SizedBox(height: 4),
           _AutoCalcRow('TARA plast.', _taraPlast),
+          const Divider(height: 20),
+          // Skrzynie MB
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Czy są skrzynie MB?',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Zaznacz jeśli kierowca przywiózł nasze własne skrzynie',
+                style: TextStyle(fontSize: 12)),
+            value: _maMbSkrzynie,
+            onChanged: (v) {
+              setState(() => _maMbSkrzynie = v);
+              _recalc();
+            },
+          ),
+          if (_maMbSkrzynie) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _NumField('Skrz. MB drew.', _mbDrewIlCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _NumField('Waga 1 szt. MB [kg]', _mbDrewWgCtrl)),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _NumField('Skrz. MB plast.', _mbPlastIlCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _NumField('Waga 1 szt. MB [kg]', _mbPlastWgCtrl)),
+            ]),
+            const SizedBox(height: 4),
+            _AutoCalcRow('TARA MB łącznie', _taraMb),
+          ],
         ],
       ),
     );
@@ -489,7 +578,11 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         children: [
           _AutoCalcRow('WAGA BRUTTO [kg]',        _brutto,  big: true),
           const Divider(height: 16),
-          _AutoCalcRow('TARA łącznie [kg]',       _taraDrew + _taraPlast),
+          _AutoCalcRow('TARA dostawcy [kg]',      _taraDrew + _taraPlast),
+          if (_maMbSkrzynie) ...[
+            _AutoCalcRow('TARA MB [kg]',          _taraMb),
+          ],
+          _AutoCalcRow('TARA łącznie [kg]',       _taraDrew + _taraPlast + _taraMb),
           const Divider(height: 16),
           _AutoCalcRow('WAGA SUROWCA NETTO [kg]', _netto,   big: true, highlight: true),
         ],
@@ -603,11 +696,15 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       drugiAut:      _drugiAut,
       wagaA2Zal:     _p(_a2ZalCtrl.text),
       wagaA2Roz:     _p(_a2RozCtrl.text),
-      drewIl:        _pi(_drewIlCtrl.text),
-      drewWagaJedn:  _p(_drewWgCtrl.text),
-      plastIl:       _pi(_plastIlCtrl.text),
-      plastWagaJedn: _p(_plastWgCtrl.text),
-      wagaBrutto:    _brutto,
+      drewIl:           _pi(_drewIlCtrl.text),
+      drewWagaJedn:     _p(_drewWgCtrl.text),
+      plastIl:          _pi(_plastIlCtrl.text),
+      plastWagaJedn:    _p(_plastWgCtrl.text),
+      mbDrewIl:         _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0,
+      mbDrewWagaJedn:   _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0,
+      mbPlastIl:        _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0,
+      mbPlastWagaJedn:  _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0,
+      wagaBrutto:       _brutto,
       wagaNetto:     _netto,
       odmiany:       _odm.map((o) => KwOdmianaData(
         nazwa:    o.nazwaCtrl.text.trim(),
@@ -623,6 +720,17 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       stanOpak: _stanOpak,
       stanAuto: _stanAuto,
     );
+  }
+
+  void _uploadPdfBackup(KwPdfData pdfData, WsgInputData d) {
+    KwPdfGenerator.generate(pdfData).then((bytes) {
+      final year = d.data.year.toString();
+      final lot  = d.lotBase.replaceAll('/', '_');
+      FirebaseStorage.instance
+          .ref('karty_wazenia/$year/$lot.pdf')
+          .putData(bytes, SettableMetadata(contentType: 'application/pdf'))
+          .catchError((Object _) => throw _); // wymagane przez API
+    }).catchError((Object _) {});
   }
 
   Future<void> _showPdfDialog(KwPdfData pdfData) async {

@@ -244,7 +244,7 @@ class _KartaCard extends StatelessWidget {
                   '${_cap(entry.owoc)}${entry.odmiana.isNotEmpty ? " • ${entry.odmiana}" : ""}'),
               _InfoRow(Icons.business_outlined, entry.dostawca),
               _InfoRow(Icons.calendar_today_outlined,
-                  '${entry.data}  •  Dostawa #${entry.nrDostawy}'),
+                  '${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
               if (entry.wagaNetto.isNotEmpty)
                 _InfoRow(Icons.scale_outlined,
                     'Netto: ${entry.wagaNetto} kg  •  Skrz: ${entry.skrzynie}'),
@@ -264,6 +264,13 @@ class _KartaCard extends StatelessWidget {
   }
 
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  static String _fmtDate(String d) {
+    if (d.length == 10 && d[4] == '-' && d[7] == '-') {
+      return '${d.substring(8)}.${d.substring(5, 7)}.${d.substring(0, 4)}';
+    }
+    return d;
+  }
 
   Color _statusColor(String s) => switch (s.toUpperCase()) {
         'PRZYJETO'   => AppTheme.warningOrange,

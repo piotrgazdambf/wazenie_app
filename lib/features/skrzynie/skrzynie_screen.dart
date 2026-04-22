@@ -390,7 +390,7 @@ class _DostawcaLotsSheet extends StatelessWidget {
                                 }
                               : null,
                           icon: const Icon(Icons.remove_circle_outline, size: 16),
-                          label: const Text('Zdejmij skrzynie'),
+                          label: const Text('Wydaj skrzynie'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.errorRed,
                             side: const BorderSide(color: AppTheme.errorRed),
@@ -549,7 +549,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
   Widget build(BuildContext context) {
     final s = widget.state;
     return AlertDialog(
-      title: Text('Zdejmij skrzynie\n${s.odmiana.isNotEmpty ? s.odmiana : s.lot}',
+      title: Text('Wydaj skrzynie\n${s.odmiana.isNotEmpty ? s.odmiana : s.lot}',
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -611,7 +611,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
           child: _saving
               ? const SizedBox(width: 18, height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Zdejmij'),
+              : const Text('Wydaj'),
         ),
       ],
     );

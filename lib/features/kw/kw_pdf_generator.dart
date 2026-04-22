@@ -48,6 +48,11 @@ class KwPdfData {
   final double drewWagaJedn;
   final int plastIl;
   final double plastWagaJedn;
+  // Skrzynie MB (własne MBF)
+  final int mbDrewIl;
+  final double mbDrewWagaJedn;
+  final int mbPlastIl;
+  final double mbPlastWagaJedn;
   final double wagaBrutto;
   final double wagaNetto;
   final List<KwOdmianaData> odmiany;
@@ -72,6 +77,10 @@ class KwPdfData {
     required this.drewWagaJedn,
     required this.plastIl,
     required this.plastWagaJedn,
+    this.mbDrewIl = 0,
+    this.mbDrewWagaJedn = 20,
+    this.mbPlastIl = 0,
+    this.mbPlastWagaJedn = 10,
     required this.wagaBrutto,
     required this.wagaNetto,
     required this.odmiany,
@@ -112,11 +121,15 @@ class KwPdfData {
       drugiAut:     a2z > 0 || a2r > 0,
       wagaA2Zal:    a2z,
       wagaA2Roz:    a2r,
-      drewIl:       drewIl,
-      drewWagaJedn: (d['drew_waga_jedn']  is num) ? (d['drew_waga_jedn']  as num).toDouble() : 20,
-      plastIl:      plastIl,
-      plastWagaJedn:(d['plast_waga_jedn'] is num) ? (d['plast_waga_jedn'] as num).toDouble() : 10,
-      wagaBrutto:   wagaBrutto,
+      drewIl:           drewIl,
+      drewWagaJedn:     (d['drew_waga_jedn']   is num) ? (d['drew_waga_jedn']   as num).toDouble() : 20,
+      plastIl:          plastIl,
+      plastWagaJedn:    (d['plast_waga_jedn']  is num) ? (d['plast_waga_jedn']  as num).toDouble() : 10,
+      mbDrewIl:         (d['mb_drew_il']  is int)  ? d['mb_drew_il']  as int  : pi(d['mb_drew_il']?.toString()  ?? '0'),
+      mbDrewWagaJedn:   (d['mb_drew_waga'] is num) ? (d['mb_drew_waga'] as num).toDouble() : 20,
+      mbPlastIl:        (d['mb_plast_il'] is int)  ? d['mb_plast_il'] as int  : pi(d['mb_plast_il']?.toString()  ?? '0'),
+      mbPlastWagaJedn:  (d['mb_plast_waga'] is num)? (d['mb_plast_waga'] as num).toDouble(): 10,
+      wagaBrutto:       wagaBrutto,
       wagaNetto:    wagaNetto,
       odmiany: [
         KwOdmianaData(
@@ -162,8 +175,11 @@ class KwPdfGenerator {
     const pad  = pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3);
     const padH = pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2);
 
-    final taraDrew  = d.drewIl  * d.drewWagaJedn;
-    final taraPlast = d.plastIl * d.plastWagaJedn;
+    final taraDrew    = d.drewIl    * d.drewWagaJedn;
+    final taraPlast   = d.plastIl   * d.plastWagaJedn;
+    final taraMbDrew  = d.mbDrewIl  * d.mbDrewWagaJedn;
+    final taraMbPlast = d.mbPlastIl * d.mbPlastWagaJedn;
+    final hasMb       = d.mbDrewIl > 0 || d.mbPlastIl > 0;
 
     pw.Widget chk(bool checked) => pw.Container(
       width: 12, height: 12,
@@ -283,9 +299,15 @@ class KwPdfGenerator {
               _w3('3', 'Waga załadowanego auta II',  d.drugiAut && d.wagaA2Zal > 0 ? _n(d.wagaA2Zal) : '', pad, sR9, sB9),
               _w3('4', 'Waga rozładowanego auta II', d.drugiAut && d.wagaA2Roz > 0 ? _n(d.wagaA2Roz) : '', pad, sR9, sB9),
 
-              // Wiersze 5-6: skrzynie — tylko jeśli ilość > 0
+              // Wiersze 5-6: skrzynie dostawcy — tylko jeśli ilość > 0
               _w3skrzynie('5', 'Ilość skrzyń drewnianych',  d.drewIl,  d.drewWagaJedn,  taraDrew,  pad, sR9, sB9),
               _w3skrzynie('6', 'Ilość skrzyń plastikowych', d.plastIl, d.plastWagaJedn, taraPlast, pad, sR9, sB9),
+
+              // Wiersze 5a-6a: skrzynie MB — tylko jeśli istnieją
+              if (hasMb && d.mbDrewIl > 0)
+                _w3skrzynie('5a', 'Ilość skrzyń MB drewnianych',  d.mbDrewIl,  d.mbDrewWagaJedn,  taraMbDrew,  pad, sR9, sB9),
+              if (hasMb && d.mbPlastIl > 0)
+                _w3skrzynie('6a', 'Ilość skrzyń MB plastikowych', d.mbPlastIl, d.mbPlastWagaJedn, taraMbPlast, pad, sR9, sB9),
 
               // Wiersz 7: waga brutto
               _w3('7', 'WAGA SUROWCA BRUTTO', _n(d.wagaBrutto), pad, sB9, sB9),
