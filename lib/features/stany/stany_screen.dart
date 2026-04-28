@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -182,12 +181,11 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
 
   static const _filters = ['Wszystkie', 'Przecier', 'Sok', 'Obieranie', 'Świeże'];
 
-  List<Widget> _buildTwoColumns(
+  List<Widget> _buildCards(
     List<StanOdmiany> entries,
     Map<String, _CrateInfo> crateMap,
     WidgetRef ref,
   ) {
-    // Jedna kolumna — czytelniej na telefonie i tablecie
     return entries.map((a) => _LotCard(
             entry: a,
             przeznaczenieColor: _przeznaczenieColor(a.przeznaczenie),
@@ -197,43 +195,6 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
               ref.invalidate(crateInfoMapProvider);
             },
           )).toList();
-  }
-
-  List<Widget> _buildTwoColumnsOLD(
-    List<StanOdmiany> entries,
-    Map<String, _CrateInfo> crateMap,
-    WidgetRef ref,
-  ) {
-    final widgets = <Widget>[];
-    for (int i = 0; i < entries.length; i += 2) {
-      final a = entries[i];
-      final b = i + 1 < entries.length ? entries[i + 1] : null;
-      widgets.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: _LotCard(
-            entry: a,
-            przeznaczenieColor: _przeznaczenieColor(a.przeznaczenie),
-            crateInfo: crateMap[a.id],
-            onPrzeznaczenieChanged: () {
-              ref.invalidate(stanyProvider);
-              ref.invalidate(crateInfoMapProvider);
-            },
-          )),
-          const SizedBox(width: 6),
-          Expanded(child: b == null ? const SizedBox() : _LotCard(
-            entry: b,
-            przeznaczenieColor: _przeznaczenieColor(b.przeznaczenie),
-            crateInfo: crateMap[b.id],
-            onPrzeznaczenieChanged: () {
-              ref.invalidate(stanyProvider);
-              ref.invalidate(crateInfoMapProvider);
-            },
-          )),
-        ],
-      ));
-    }
-    return widgets;
   }
 
   @override
@@ -250,6 +211,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
             icon: const Icon(Icons.arrow_downward),
             label: const Text('Ściągnij ze stanów'),
             backgroundColor: AppTheme.primaryMid,
+            foregroundColor: Colors.white,
             onPressed: () => showDialog<void>(
               context: context,
               builder: (_) => _SciagnijDialog(entries: entries),
@@ -326,7 +288,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
                               _MagazynSummaryCard(entries: filtered),
                               const SizedBox(height: 10),
                               if (filtered.isEmpty) const _EmptyView()
-                              else ..._buildTwoColumns(filtered, crateMap, ref),
+                              else ..._buildCards(filtered, crateMap, ref),
                             ],
                           );
                         },
@@ -357,34 +319,37 @@ class _MagazynSummaryCard extends StatelessWidget {
   const _MagazynSummaryCard({required this.entries});
 
   static const _columns = [
-    (kod: 'P', label: 'PRZECIER', color: Color(0xFF2E7D32)),
-    (kod: 'S', label: 'SOK',      color: Color(0xFFE65100)),
-    (kod: 'O', label: 'OBIERANIE',color: Color(0xFF6A1B9A)),
-    (kod: 'F', label: 'ŚWIEŻE',   color: Color(0xFF0277BD)),
+    (kod: 'P', label: 'PRZECIER',  color: Color(0xFF2E7D32)),
+    (kod: 'S', label: 'SOK',       color: Color(0xFFE65100)),
+    (kod: 'O', label: 'OBIERANIE', color: Color(0xFF6A1B9A)),
+    (kod: 'F', label: 'ŚWIEŻE',    color: Color(0xFF0277BD)),
   ];
 
   @override
   Widget build(BuildContext context) {
-    // Grupuj: przeznaczenie_kod → odmiana → kg
-    final Map<String, Map<String, double>> byPrzezn = {};
-    for (final col in _columns) {
-      byPrzezn[col.kod] = {};
-    }
+    final Map<String, Map<String, double>> jablkoByKod  = {for (final c in _columns) c.kod: {}};
+    final Map<String, Map<String, double>> gruszkaByKod = {for (final c in _columns) c.kod: {}};
+    final Map<String, Map<String, double>> inneByKod    = {for (final c in _columns) c.kod: {}};
 
     for (final e in entries) {
-      final przKod = e.przeznaczenie.length == 1
-          ? e.przeznaczenie.toUpperCase()
-          : _extractKod(e.przeznaczenie);
-      if (!byPrzezn.containsKey(przKod)) continue;
+      final przKod = _extractKod(e.przeznaczenie);
+      if (!jablkoByKod.containsKey(przKod)) continue;
+      final owoc    = e.owoc.trim().toLowerCase();
       final odmiana = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
-      byPrzezn[przKod]![odmiana] = (byPrzezn[przKod]![odmiana] ?? 0) + e.kgValue;
+      if (owoc == 'jabłko' || owoc.contains('jab')) {
+        jablkoByKod[przKod]![odmiana]  = (jablkoByKod[przKod]![odmiana]  ?? 0) + e.kgValue;
+      } else if (owoc == 'gruszka' || owoc.contains('gruszk')) {
+        gruszkaByKod[przKod]![odmiana] = (gruszkaByKod[przKod]![odmiana] ?? 0) + e.kgValue;
+      } else {
+        inneByKod[przKod]![odmiana]    = (inneByKod[przKod]![odmiana]    ?? 0) + e.kgValue;
+      }
     }
 
     final totalAll = entries.fold(0.0, (a, e) => a + e.kgValue);
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -396,101 +361,89 @@ class _MagazynSummaryCard extends StatelessWidget {
               Text('${_fmt(totalAll)} kg',
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryMid)),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
 
-            // 4 kolumny przeznaczenia
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Szybkie chipsaty per przeznaczenie
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
               children: _columns.map((col) {
-                final data = byPrzezn[col.kod] ?? {};
-                final total = data.values.fold(0.0, (a, v) => a + v);
-
-                // Grupuj po owoc: jabłko i gruszka z podmianami, reszta bezpośrednio
-                final jablkoOdm = <String, double>{};
-                final gruszkaOdm = <String, double>{};
-                final inneOdm = <String, double>{};
-
-                for (final e in entries) {
-                  final przKod = _extractKod(e.przeznaczenie);
-                  if (przKod != col.kod) continue;
-                  final owoc = e.owoc.trim().toLowerCase();
-                  final odmiana = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
-                  if (owoc == 'jabłko' || owoc.contains('jab')) {
-                    jablkoOdm[odmiana] = (jablkoOdm[odmiana] ?? 0) + e.kgValue;
-                  } else if (owoc == 'gruszka' || owoc.contains('gruszk')) {
-                    gruszkaOdm[odmiana] = (gruszkaOdm[odmiana] ?? 0) + e.kgValue;
-                  } else {
-                    inneOdm[odmiana] = (inneOdm[odmiana] ?? 0) + e.kgValue;
-                  }
-                }
-
-                final jablkoTotal  = jablkoOdm.values.fold(0.0, (a, v) => a + v);
-                final gruszkaTotal = gruszkaOdm.values.fold(0.0, (a, v) => a + v);
-
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: col.color,
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                          ),
-                          child: Text(col.label,
-                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-                              textAlign: TextAlign.center),
-                        ),
-                        Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: col.color.withAlpha(60), width: 0.5),
-                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
-                          ),
-                          child: total == 0
-                              ? const Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Text('—', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary), textAlign: TextAlign.center),
-                                )
-                              : Column(children: [
-                                  if (jablkoTotal > 0) ...[
-                                    _FruitGroupHeader('Jabłko', jablkoTotal, col.color),
-                                    ...(_sortedEntries(jablkoOdm).map((od) => _OdmianaRow(
-                                      odmiana: od.key, kg: od.value,
-                                      total: jablkoTotal, color: col.color, indent: true,
-                                    ))),
-                                  ],
-                                  if (gruszkaTotal > 0) ...[
-                                    _FruitGroupHeader('Gruszka', gruszkaTotal, col.color),
-                                    ...(_sortedEntries(gruszkaOdm).map((od) => _OdmianaRow(
-                                      odmiana: od.key, kg: od.value,
-                                      total: gruszkaTotal, color: col.color, indent: true,
-                                    ))),
-                                  ],
-                                  ...(_sortedEntries(inneOdm).map((od) => _OdmianaRow(
-                                    odmiana: od.key, kg: od.value,
-                                    total: total, color: col.color,
-                                  ))),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: col.color.withAlpha(20),
-                                      border: Border(top: BorderSide(color: col.color.withAlpha(60), width: 0.5)),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    child: Row(children: [
-                                      const Expanded(child: Text('SUMA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-                                      Text('${_fmt(total)} kg', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                                    ]),
-                                  ),
-                                ]),
-                        ),
-                      ],
-                    ),
+                final total = (jablkoByKod[col.kod]?.values.fold<double>(0.0, (a, v) => a + v) ?? 0.0) +
+                              (gruszkaByKod[col.kod]?.values.fold<double>(0.0, (a, v) => a + v) ?? 0.0) +
+                              (inneByKod[col.kod]?.values.fold<double>(0.0, (a, v) => a + v) ?? 0.0);
+                if (total == 0) return const SizedBox.shrink();
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: col.color.withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: col.color.withAlpha(80)),
                   ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(color: col.color, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(col.label,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: col.color)),
+                    const SizedBox(width: 6),
+                    Text('${_fmt(total)} kg',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: col.color)),
+                  ]),
                 );
               }).toList(),
             ),
+
+            const SizedBox(height: 10),
+
+            // Sekcje wertykalne per przeznaczenie
+            ..._columns.map((col) {
+              final jMap   = jablkoByKod[col.kod]!;
+              final gMap   = gruszkaByKod[col.kod]!;
+              final iMap   = inneByKod[col.kod]!;
+              final jTotal = jMap.values.fold(0.0, (a, v) => a + v);
+              final gTotal = gMap.values.fold(0.0, (a, v) => a + v);
+              final iTotal = iMap.values.fold(0.0, (a, v) => a + v);
+              final total  = jTotal + gTotal + iTotal;
+              if (total == 0) return const SizedBox.shrink();
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Nagłówek sekcji
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        color: col.color,
+                        child: Row(children: [
+                          Text(col.label,
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                          const Spacer(),
+                          Text('${_fmt(total)} kg',
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                      if (jTotal > 0) ...[
+                        _FruitGroupHeader('Jabłko', jTotal, col.color),
+                        ..._sortedEntries(jMap).map((od) =>
+                            _OdmianaRow(odmiana: od.key, kg: od.value, color: col.color, indent: true)),
+                      ],
+                      if (gTotal > 0) ...[
+                        _FruitGroupHeader('Gruszka', gTotal, col.color),
+                        ..._sortedEntries(gMap).map((od) =>
+                            _OdmianaRow(odmiana: od.key, kg: od.value, color: col.color, indent: true)),
+                      ],
+                      ..._sortedEntries(iMap).map((od) =>
+                          _OdmianaRow(odmiana: od.key, kg: od.value, color: col.color)),
+                    ],
+                  ),
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -522,7 +475,6 @@ class _DostawcyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Grupuj: owoc → odmiana+dostawca → kg
     final Map<String, Map<String, double>> byOwocKey = {};
     final Map<String, String> keyLabel = {};
 
@@ -582,13 +534,13 @@ class _FruitGroupHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
+    padding: const EdgeInsets.fromLTRB(10, 5, 10, 4),
     decoration: BoxDecoration(color: color.withAlpha(15)),
     child: Row(children: [
       Expanded(child: Text(owoc.toUpperCase(),
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color))),
       Text('${kg.toStringAsFixed(0)} kg',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
     ]),
   );
 }
@@ -596,47 +548,42 @@ class _FruitGroupHeader extends StatelessWidget {
 class _OdmianaRow extends StatelessWidget {
   final String odmiana;
   final double kg;
-  final double total;
   final Color color;
   final bool indent;
 
-  const _OdmianaRow({required this.odmiana, required this.kg, required this.total, required this.color, this.indent = false});
+  const _OdmianaRow({
+    required this.odmiana,
+    required this.kg,
+    required this.color,
+    this.indent = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final ratio = total <= 0 ? 0.0 : (kg / total).clamp(0.0, 1.0);
     return Container(
-      padding: EdgeInsets.fromLTRB(indent ? 16 : 8, 5, 8, 5),
+      padding: EdgeInsets.fromLTRB(indent ? 20 : 10, 6, 10, 6),
       decoration: BoxDecoration(
+        color: indent ? color.withAlpha(5) : Colors.transparent,
         border: Border(bottom: BorderSide(color: color.withAlpha(20), width: 0.5)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Expanded(
-              child: Text(odmiana,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-                      color: indent ? AppTheme.textSecondary : null)),
-            ),
-            const SizedBox(width: 6),
-            Text('${kg.toStringAsFixed(0)} kg',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          ]),
-          const SizedBox(height: 3),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 5,
-              color: color,
-              backgroundColor: color.withAlpha(20),
+      child: Row(children: [
+        Expanded(
+          child: Text(
+            odmiana,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: indent ? AppTheme.textSecondary : AppTheme.textPrimary,
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '${kg.toStringAsFixed(0)} kg',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+        ),
+      ]),
     );
   }
 }
@@ -708,7 +655,7 @@ class _LotCard extends StatelessWidget {
             Text(entry.lot,
                 style: const TextStyle(fontSize: 11, color: AppTheme.primaryMid, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
-            // Wiersz 3: owoc + odmiana + dostawca w jednej linii
+            // Wiersz 3: owoc + odmiana + dostawca
             Row(children: [
               Icon(Icons.eco_outlined, size: 11, color: AppTheme.textSecondary),
               const SizedBox(width: 3),
@@ -783,27 +730,6 @@ class _LotCard extends StatelessWidget {
     if (c.drewRemaining > 0) return '~${avg.toStringAsFixed(0)} kg/D';
     return '~${avg.toStringAsFixed(0)} kg/P';
   }
-}
-
-class _InfoLine extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _InfoLine(this.icon, this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 2),
-    child: Row(
-      children: [
-        Icon(icon, size: 12, color: AppTheme.textSecondary),
-        const SizedBox(width: 5),
-        Expanded(
-          child: Text(text,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-        ),
-      ],
-    ),
-  );
 }
 
 class _CrateBadge extends StatelessWidget {
@@ -1116,7 +1042,6 @@ class _SciagnijDialogState extends State<_SciagnijDialog> {
     final now = DateTime.now();
     try {
       final batch = db.batch();
-      // MCR zejście
       final mcrRef = db.collection(AppConstants.colMcrQueue).doc();
       batch.set(mcrRef, {
         'lot':          entry.lot,
@@ -1131,7 +1056,6 @@ class _SciagnijDialogState extends State<_SciagnijDialog> {
         'status':       'done',
         'createdAt':    FieldValue.serverTimestamp(),
       });
-      // CrateState — odejmij skrzynie jeśli tryb skrzyń
       if (!_useWaga) {
         final crateSnap = await db.collection(AppConstants.colCrateStates).doc(entry.id).get();
         if (crateSnap.exists) {
@@ -1145,7 +1069,6 @@ class _SciagnijDialogState extends State<_SciagnijDialog> {
           });
         }
       }
-      // Oznacz delivery jako ROZLICZONO jeśli waga zejście = pełna waga
       final delivKg = entry.kgValue;
       if (_useWaga && wagaKg >= delivKg * 0.99) {
         batch.update(db.collection(AppConstants.colDeliveries).doc(entry.id), {'status': 'ROZLICZONO'});
@@ -1168,7 +1091,6 @@ class _SciagnijDialogState extends State<_SciagnijDialog> {
       title: const Text('Ściągnij ze stanów'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Owoc
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'Owoc / Surowiec'),
             value: _owoc,
@@ -1176,7 +1098,6 @@ class _SciagnijDialogState extends State<_SciagnijDialog> {
             onChanged: (v) => setState(() { _owoc = v; _lot = null; }),
           ),
           const SizedBox(height: 10),
-          // Odmiana (LOT)
           if (_owoc != null)
             DropdownButtonFormField<String>(
               decoration: const InputDecoration(labelText: 'Odmiana / LOT'),
@@ -1188,7 +1109,6 @@ class _SciagnijDialogState extends State<_SciagnijDialog> {
               onChanged: (v) => setState(() => _lot = v),
             ),
           const SizedBox(height: 12),
-          // Tryb: waga vs skrzynie
           if (_lot != null) ...[
             Row(children: [
               Expanded(child: RadioListTile<bool>(
