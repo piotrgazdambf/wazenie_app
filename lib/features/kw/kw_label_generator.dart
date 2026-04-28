@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -10,7 +9,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 class KwLabelData {
   final String lot;
   final String odmiana;
-  final String data;        // dd.MM.yyyy
+  final String data;               // dd.MM.yyyy — data z WSG (przyjęcia)
+  final String dataDostarczenia;   // dd.MM.yyyy — data dostarczenia do Rylex/Grójecka
   final String dostawca;
   final String dostawcaKod;
   final String przeznaczenie;
@@ -19,6 +19,7 @@ class KwLabelData {
     required this.lot,
     required this.odmiana,
     required this.data,
+    this.dataDostarczenia = '',
     required this.dostawca,
     required this.dostawcaKod,
     required this.przeznaczenie,
@@ -40,12 +41,7 @@ class KwLabelGenerator {
           100 * PdfPageFormat.mm,
           100 * PdfPageFormat.mm,
         ),
-        margin: const pw.EdgeInsets.fromLTRB(
-          4 * PdfPageFormat.mm,
-          4 * PdfPageFormat.mm,
-          4 * PdfPageFormat.mm,
-          4 * PdfPageFormat.mm,
-        ),
+        margin: pw.EdgeInsets.zero,
         build: (_) => _buildLabel(d, qrImage, fontB, fontR),
       ));
     }
@@ -59,106 +55,84 @@ class KwLabelGenerator {
     pw.Font fontB,
     pw.Font fontR,
   ) {
-    final NAVY = PdfColor.fromHex('#1a3566');
+    final sB10     = pw.TextStyle(font: fontB, fontSize: 10);
+    final sB13     = pw.TextStyle(font: fontB, fontSize: 13);
+    final sB22     = pw.TextStyle(font: fontB, fontSize: 22);
+    final padding  = 5 * PdfPageFormat.mm;
+    final border   = pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(width: 0.5)));
 
-    final sB11 = pw.TextStyle(font: fontB, fontSize: 11);
-    final sB13 = pw.TextStyle(font: fontB, fontSize: 13);
-    final sB20 = pw.TextStyle(font: fontB, fontSize: 20, color: PdfColors.white);
+    return pw.Container(
+      color: PdfColors.white,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
 
-    // Szerokość boczna (QR ma ~58% szerokości, tekst boczny ~21% z każdej strony)
-    const sideW = 18.0 * PdfPageFormat.mm;
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-
-        // ── ODMIANA (header navy) ──────────────────────────────────────────────
-        pw.Container(
-          color: NAVY,
-          padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
-          child: pw.Text(
-            d.odmiana.isNotEmpty ? d.odmiana : '—',
-            style: sB20,
-            textAlign: pw.TextAlign.center,
+          // ── ODMIANA ──────────────────────────────────────────────────────────
+          pw.Padding(
+            padding: pw.EdgeInsets.fromLTRB(padding, padding, padding, 0),
+            child: pw.Text(
+              d.odmiana.isNotEmpty ? d.odmiana : '—',
+              style: sB22,
+              textAlign: pw.TextAlign.center,
+            ),
           ),
-        ),
-        pw.SizedBox(height: 4),
 
-        // ── ŚRODEK: boczny tekst + QR ─────────────────────────────────────────
-        pw.Expanded(
-          child: pw.Stack(
-            overflow: pw.Overflow.visible,
-            children: [
-              // QR code — wyśrodkowany z marginesami bocznymi
-              pw.Positioned(
-                left: sideW,
-                right: sideW,
-                top: 0,
-                bottom: 0,
-                child: pw.Center(
-                  child: pw.Image(qrImage, fit: pw.BoxFit.contain),
-                ),
-              ),
+          pw.SizedBox(height: 2 * PdfPageFormat.mm),
 
-              // Lewy tekst: LOT (rotacja CCW — czytasz od dołu do góry)
-              pw.Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: pw.Container(
-                  width: sideW,
-                  child: pw.Center(
-                    child: pw.Transform.rotate(
-                      angle: math.pi / 2,
-                      child: pw.Text(
-                        d.lot,
-                        style: sB11,
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ),
+          // ── QR CODE (wyśrodkowany) ────────────────────────────────────────────
+          pw.Expanded(
+            child: pw.Center(
+              child: pw.SizedBox(
+                width: 70 * PdfPageFormat.mm,
+                height: 70 * PdfPageFormat.mm,
+                child: pw.Image(qrImage, fit: pw.BoxFit.contain),
               ),
-
-              // Prawy tekst: DATA (rotacja CW — czytasz od góry do dołu)
-              pw.Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                child: pw.Container(
-                  width: sideW,
-                  child: pw.Center(
-                    child: pw.Transform.rotate(
-                      angle: -math.pi / 2,
-                      child: pw.Text(
-                        d.data,
-                        style: sB11,
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        pw.SizedBox(height: 4),
 
-        // ── DOSTAWCA ──────────────────────────────────────────────────────────
-        pw.Text(
-          '${d.dostawcaKod} — ${d.dostawca}',
-          style: sB13,
-          textAlign: pw.TextAlign.center,
-        ),
-        pw.SizedBox(height: 2),
+          pw.SizedBox(height: 2 * PdfPageFormat.mm),
 
-        // ── PRZEZNACZENIE ─────────────────────────────────────────────────────
-        pw.Text(
-          'Przeznaczenie: ${d.przeznaczenie}',
-          style: sB13,
-          textAlign: pw.TextAlign.center,
-        ),
-      ],
+          // ── LOT (lewo, opcjonalnie z datą dostarczenia) + DATA WSG (prawo) ──────
+          pw.Container(
+            decoration: border,
+            padding: pw.EdgeInsets.symmetric(horizontal: padding, vertical: 2 * PdfPageFormat.mm),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  d.dataDostarczenia.isNotEmpty
+                      ? '${d.lot} - ${d.dataDostarczenia}'
+                      : d.lot,
+                  style: sB13,
+                ),
+                pw.Text(d.data, style: sB13),
+              ],
+            ),
+          ),
+
+          // ── DOSTAWCA ─────────────────────────────────────────────────────────
+          pw.Container(
+            decoration: border,
+            padding: pw.EdgeInsets.symmetric(horizontal: padding, vertical: 2 * PdfPageFormat.mm),
+            child: pw.Text(
+              '${d.dostawcaKod} — ${d.dostawca}',
+              style: pw.TextStyle(font: fontB, fontSize: 11),
+              textAlign: pw.TextAlign.center,
+            ),
+          ),
+
+          // ── PRZEZNACZENIE ─────────────────────────────────────────────────────
+          pw.Container(
+            decoration: border,
+            padding: pw.EdgeInsets.fromLTRB(padding, 2 * PdfPageFormat.mm, padding, padding),
+            child: pw.Text(
+              'Przeznaczenie: ${d.przeznaczenie}',
+              style: sB10,
+              textAlign: pw.TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

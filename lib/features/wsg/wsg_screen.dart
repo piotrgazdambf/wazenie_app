@@ -20,10 +20,16 @@ const _przeznaczenia = [
   ('F', 'Świeże',    Icons.eco_outlined),
 ];
 
-const _owoce = [
-  'jabłko', 'gruszka', 'wiśnia',
-  'rabarbar', 'truskawka', 'marchewka', 'mango',
-];
+final owocListProvider = StreamProvider<List<String>>((ref) {
+  return FirebaseFirestore.instance
+      .collection('owoce')
+      .orderBy('nazwa')
+      .snapshots()
+      .map((snap) => snap.docs
+          .map((d) => (d.data()['nazwa'] as String? ?? '').toLowerCase())
+          .where((n) => n.isNotEmpty)
+          .toList());
+});
 
 const _owoceDlaKW = {'jabłko', 'gruszka'};
 
@@ -75,8 +81,11 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
     return '$pfx/$nr/$kod/$year-$p';
   }
 
+  // Rylex/Grójecka: nrDostawy nie jest wymagany (LOT auto z dziennego licznika)
+  bool get _nrRequired => !_rylex && !_grojecka;
+
   bool get _canProceed =>
-      _nrDostawyCtrl.text.trim().isNotEmpty &&
+      (!_nrRequired || _nrDostawyCtrl.text.trim().isNotEmpty) &&
       _dostawca != null &&
       _przeznaczenieKod != null &&
       _owoc != null;
@@ -118,6 +127,8 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
       przeznaczenieKod: _przeznaczenieKod!,
       owoc: _owocFinal,
       isKWG: _isKWG,
+      isRylex: _rylex,
+      isGrojecka: _grojecka,
     );
     if (_isKWG) {
       context.go('/kwg/new', extra: input);
@@ -129,7 +140,9 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
   @override
   Widget build(BuildContext context) {
     final suppliersAsync = ref.watch(suppliersProvider);
+    final owocyAsync     = ref.watch(owocListProvider);
     final df = DateFormat('dd.MM.yyyy');
+    final owoce = owocyAsync.valueOrNull ?? const ['jabłko', 'gruszka', 'wiśnia', 'rabarbar', 'truskawka', 'marchewka', 'mango'];
 
     return OfflineOverflowGuard(
       child: Scaffold(
@@ -142,7 +155,33 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
           children: [
             const OfflineBanner(),
             Expanded(
-              child: SingleChildScrollView(
+              child: Stack(
+                children: [
+                  // ── Watermark ──────────────────────────────────────────────
+                  Positioned(
+                    right: -20, bottom: 60,
+                    child: Opacity(
+                      opacity: 0.07,
+                      child: Icon(
+                        Icons.inventory_2_outlined,
+                        size: 280,
+                        color: AppTheme.primaryDark,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 40, bottom: 110,
+                    child: Opacity(
+                      opacity: 0.07,
+                      child: Icon(
+                        Icons.eco_outlined,
+                        size: 90,
+                        color: AppTheme.primaryMid,
+                      ),
+                    ),
+                  ),
+                  // ── Treść ──────────────────────────────────────────────────
+                  SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -153,7 +192,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                     const SizedBox(height: 16),
 
                     // ── 2. Opcje dostawy (RYLEX / GRÓJECKA) — TOP ───────────
-                    _SectionLabel('Opcje dostawy'),
+                    _SectionLabel('Opcje dostawy', icon: Icons.local_shipping_outlined, step: 1),
                     Row(children: [
                       Expanded(
                         child: _ToggleTile(
@@ -161,7 +200,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                           icon: Icons.local_shipping_outlined,
                           active: _rylex,
                           color: const Color(0xFF7C3AED),
-                          onTap: () => setState(() => _rylex = !_rylex),
+                          onTap: () => setState(() { _rylex = !_rylex; if (_rylex) _grojecka = false; }),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -171,14 +210,14 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                           icon: Icons.agriculture_outlined,
                           active: _grojecka,
                           color: AppTheme.successGreen,
-                          onTap: () => setState(() => _grojecka = !_grojecka),
+                          onTap: () => setState(() { _grojecka = !_grojecka; if (_grojecka) _rylex = false; }),
                         ),
                       ),
                     ]),
                     const SizedBox(height: 16),
 
                     // ── 3. Data + Nr dostawy ────────────────────────────────
-                    _SectionLabel('Dane dostawy'),
+                    _SectionLabel('Dane dostawy', icon: Icons.calendar_today_outlined, step: 2),
                     _FormCard(
                       child: Column(children: [
                         InkWell(
@@ -192,6 +231,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                             child: Text(df.format(_data)),
                           ),
                         ),
+                        if (_nrRequired) ...[
                         const SizedBox(height: 10),
                         Row(children: [
                           Expanded(
@@ -223,12 +263,19 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                             ),
                           ),
                         ]),
+                        ] else
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text('Nr dostawy: auto (Rylex/Grójecka)',
+                              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary,
+                                  fontStyle: FontStyle.italic)),
+                          ),
                       ]),
                     ),
                     const SizedBox(height: 16),
 
                     // ── 4. Dostawca ─────────────────────────────────────────
-                    _SectionLabel('Dostawca'),
+                    _SectionLabel('Dostawca', icon: Icons.business_outlined, step: 3),
                     _FormCard(
                       child: suppliersAsync.when(
                         loading: () => const Center(child: LinearProgressIndicator()),
@@ -256,7 +303,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                     const SizedBox(height: 16),
 
                     // ── 5. Przeznaczenie (tap-kafelki) ──────────────────────
-                    _SectionLabel('Przeznaczenie'),
+                    _SectionLabel('Przeznaczenie', icon: Icons.category_outlined, step: 4),
                     _FormCard(
                       child: Row(
                         children: List.generate(_przeznaczenia.length, (i) {
@@ -280,7 +327,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                     const SizedBox(height: 16),
 
                     // ── 6. Owoc (tap-kafelki grid) ──────────────────────────
-                    _SectionLabel('Owoc / Surowiec'),
+                    _SectionLabel('Owoc / Surowiec', icon: Icons.eco_outlined, step: 5),
                     _FormCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -288,7 +335,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: _owoce.map((o) {
+                            children: owoce.map((o) {
                               final sel    = _owoc == o;
                               final active = sel ? AppTheme.primaryMid : AppTheme.textSecondary;
                               return GestureDetector(
@@ -344,7 +391,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                     // ── 7. LOT preview z prawdziwym QR ──────────────────────
                     if (_canProceed) ...[
                       const SizedBox(height: 16),
-                      _LotPreviewCard(lot: _lotPreview, isKWG: _isKWG),
+                      _LotPreviewCard(lot: _lotPreview, isKWG: _isKWG, isRG: _rylex || _grojecka),
                     ],
 
                     const SizedBox(height: 24),
@@ -358,7 +405,9 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
                   ],
                 ),
               ),
-            ),
+            ],
+          ),
+        ),
           ],
         ),
       ),
@@ -514,15 +563,42 @@ class _FormCard extends StatelessWidget {
 
 class _SectionLabel extends StatelessWidget {
   final String text;
-  const _SectionLabel(this.text);
+  final IconData? icon;
+  final int? step;
+  const _SectionLabel(this.text, {this.icon, this.step});
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(left: 2, bottom: 8),
-    child: Text(text.toUpperCase(), style: const TextStyle(
-      fontSize: 11, fontWeight: FontWeight.w700,
-      letterSpacing: 1.2, color: AppTheme.textSecondary,
-    )),
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        // Krok numeryczny
+        if (step != null) ...[
+          Container(
+            width: 24, height: 24,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: AppTheme.primaryMid,
+              shape: BoxShape.circle,
+            ),
+            child: Text('$step', style: const TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white,
+            )),
+          ),
+          const SizedBox(width: 8),
+        ],
+        // Ikona
+        if (icon != null) ...[
+          Icon(icon, size: 15, color: AppTheme.primaryMid),
+          const SizedBox(width: 6),
+        ],
+        // Tekst
+        Text(text.toUpperCase(), style: const TextStyle(
+          fontSize: 11, fontWeight: FontWeight.w700,
+          letterSpacing: 1.0, color: AppTheme.textSecondary,
+        )),
+      ],
+    ),
   );
 }
 
@@ -614,7 +690,8 @@ class _DostawcaSelectorState extends State<_DostawcaSelector> {
 class _LotPreviewCard extends StatelessWidget {
   final String lot;
   final bool isKWG;
-  const _LotPreviewCard({required this.lot, required this.isKWG});
+  final bool isRG;
+  const _LotPreviewCard({required this.lot, required this.isKWG, this.isRG = false});
 
   @override
   Widget build(BuildContext context) {
@@ -659,16 +736,21 @@ class _LotPreviewCard extends StatelessWidget {
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('STWORZONY LOT',
+            Text(isRG ? 'PRZEKIEROWANIE DO KWG' : 'STWORZONY LOT',
                 style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700,
                   letterSpacing: 1.2, color: Colors.white.withValues(alpha: 0.6),
                 )),
             const SizedBox(height: 4),
-            Text(lot, style: const TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w800,
-              color: Colors.white, letterSpacing: 0.3,
-            )),
+            Text(
+              isRG ? 'Numer dostawy nadawany per odmiana' : lot,
+              style: TextStyle(
+                fontSize: isRG ? 13 : 15,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: isRG ? 0.7 : 1.0),
+                letterSpacing: 0.3,
+              ),
+            ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

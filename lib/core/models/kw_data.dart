@@ -4,12 +4,14 @@
 class WsgInputData {
   final DateTime data;
   final String nrDostawy;       // np. "1", "42"
-  final String dostawcaNazwa;   // np. "Oliwia"
-  final String dostawcaKod;     // np. "029"
-  final String przeznaczenie;   // np. "Obieranie"
-  final String przeznaczenieKod;// np. "O"
-  final String owoc;            // np. "jabłko"
-  final bool isKWG;             // true = RYLEX/GRÓJECKA/inny owoc
+  final String dostawcaNazwa;
+  final String dostawcaKod;
+  final String przeznaczenie;
+  final String przeznaczenieKod;
+  final String owoc;
+  final bool isKWG;
+  final bool isRylex;
+  final bool isGrojecka;
 
   const WsgInputData({
     required this.data,
@@ -20,7 +22,12 @@ class WsgInputData {
     required this.przeznaczenieKod,
     required this.owoc,
     required this.isKWG,
+    this.isRylex = false,
+    this.isGrojecka = false,
   });
+
+  /// Typ KWG: 'G' dla Grójecka, 'R' dla Rylex, '' dla reszty
+  String get kwgType => isGrojecka ? 'G' : (isRylex ? 'R' : '');
 
   /// LOT bazowy: C/0001/029/26-O (lub W/ dla KWG)
   String get lotBase {

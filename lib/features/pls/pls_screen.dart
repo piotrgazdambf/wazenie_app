@@ -8,6 +8,7 @@ import '../../core/offline/hive_buffer.dart';
 import '../../core/offline/offline_entry.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../../shared/widgets/wpisz_wage_dialog.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ class PlsEntry {
   final String skrzynie;
   final String wagaNetto;
   final String wagaBrutto;
+  final bool wagaNettoBrak;
   final String owoc;
   final String status;
   final bool isKwg;
@@ -46,6 +48,7 @@ class PlsEntry {
     required this.skrzynie,
     required this.wagaNetto,
     required this.wagaBrutto,
+    this.wagaNettoBrak = false,
     required this.owoc,
     required this.status,
     this.isKwg = false,
@@ -69,6 +72,7 @@ class PlsEntry {
         odmiana:      d['odmiana'] as String? ?? '',
         skrzynie:     d['skrzynie'] as String? ?? '',
         wagaNetto:    d['waga_netto'] as String? ?? '',
+        wagaNettoBrak: d['waga_netto_brak'] as bool? ?? false,
         wagaBrutto:   (d['waga_brutto'] != null)
             ? d['waga_brutto'].toString()
             : '',
@@ -107,8 +111,22 @@ class PlsScreen extends ConsumerStatefulWidget {
   ConsumerState<PlsScreen> createState() => _PlsScreenState();
 }
 
-class _PlsScreenState extends ConsumerState<PlsScreen> {
+class _PlsScreenState extends ConsumerState<PlsScreen>
+    with SingleTickerProviderStateMixin {
   String _search = '';
+  late TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,11 +138,20 @@ class _PlsScreenState extends ConsumerState<PlsScreen> {
         appBar: AppBar(
           title: const Text('Lista dostaw (PLS)'),
           leading: BackButton(onPressed: () => context.go('/home')),
+          bottom: TabBar(
+            controller: _tabCtrl,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            tabs: const [
+              Tab(text: 'Wszystkie'),
+              Tab(text: 'Nierozliczone'),
+            ],
+          ),
         ),
         body: Column(
           children: [
             const OfflineBanner(),
-            // Pasek wyszukiwania
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: TextField(
@@ -144,26 +171,108 @@ class _PlsScreenState extends ConsumerState<PlsScreen> {
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => _ErrorView(message: e.toString()),
                 data: (list) {
-                  final filtered = _search.isEmpty
+                  final searched = _search.isEmpty
                       ? list
                       : list.where((e) =>
                           e.lot.toLowerCase().contains(_search) ||
                           e.odmiana.toLowerCase().contains(_search) ||
                           e.dostawca.toLowerCase().contains(_search) ||
                           e.owoc.toLowerCase().contains(_search)).toList();
+                  final nierozliczone = searched
+                      .where((e) => e.status != 'ROZLICZONO')
+                      .toList();
 
-                  if (filtered.isEmpty) return const _EmptyView();
+                  Widget buildList(List<PlsEntry> items) {
+                    if (items.isEmpty) return const _EmptyView();
+                    final grouped = <String, List<PlsEntry>>{};
+                    for (final e in items) {
+                      final key = e.lot.replaceAll(RegExp(r'\d+$'), '');
+                      grouped.putIfAbsent(key, () => []);
+                      grouped[key]!.add(e);
+                    }
+                    final keys = grouped.keys.toList();
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                      itemCount: keys.length,
+                      itemBuilder: (ctx, i) {
+                        final entries = grouped[keys[i]]!;
+                        if (entries.length == 1) return _PlsCard(entry: entries[0]);
+                        return _PlsGroup(baseLot: keys[i], entries: entries);
+                      },
+                    );
+                  }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                    itemCount: filtered.length,
-                    itemBuilder: (ctx, i) => _PlsCard(entry: filtered[i]),
+                  return TabBarView(
+                    controller: _tabCtrl,
+                    children: [
+                      buildList(searched),
+                      buildList(nierozliczone),
+                    ],
                   );
                 },
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Grupowanie dostaw ─────────────────────────────────────────────────────────
+
+class _PlsGroup extends StatefulWidget {
+  final String baseLot;
+  final List<PlsEntry> entries;
+  const _PlsGroup({required this.baseLot, required this.entries});
+
+  @override
+  State<_PlsGroup> createState() => _PlsGroupState();
+}
+
+class _PlsGroupState extends State<_PlsGroup> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final e0 = widget.entries.first;
+    final totalNetto = widget.entries.fold(0.0, (s, e) {
+      return s + (double.tryParse(e.wagaNetto.replaceAll(',', '.')) ?? 0);
+    });
+    final odmiany = widget.entries.map((e) => e.odmiana).where((o) => o.isNotEmpty).toList();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.baseLot,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14,
+                          color: AppTheme.primaryDark, fontFamily: 'monospace')),
+                  const SizedBox(height: 3),
+                  Text('${e0.owoc}${odmiany.isNotEmpty ? "  •  ${odmiany.join(" / ")}" : ""}',
+                      style: const TextStyle(fontSize: 13)),
+                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.toStringAsFixed(0)} kg  •  ${widget.entries.length} odm.',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                ])),
+                Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                    color: AppTheme.textSecondary),
+              ]),
+            ),
+          ),
+          if (_expanded)
+            ...widget.entries.map((e) => Container(
+              decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFEEEEEE)))),
+              child: _PlsCard(entry: e),
+            )),
+        ],
       ),
     );
   }
@@ -185,6 +294,11 @@ class _PlsCard extends ConsumerWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      shape: entry.wagaNettoBrak
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppTheme.errorRed, width: 1.5))
+          : null,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _showDetail(context, isAdmin: isAdmin),
@@ -193,6 +307,11 @@ class _PlsCard extends ConsumerWidget {
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Baner "brak wagi netto"
+            if (entry.wagaNettoBrak) ...[
+              _WpisWageButton(entry: entry),
+              const SizedBox(height: 8),
+            ],
             // Nagłówek: LOT + status
             Row(
               children: [
@@ -218,7 +337,7 @@ class _PlsCard extends ConsumerWidget {
             if (entry.dostawca.isNotEmpty)
               _InfoRow(Icons.business_outlined, entry.dostawca),
             if (entry.data.isNotEmpty)
-              _InfoRow(Icons.calendar_today_outlined, '${entry.data}  •  Dostawa ${entry.nrDostawy}'),
+              _InfoRow(Icons.calendar_today_outlined, '${entry.data}  •  ${entry.lot}'),
 
             // Skrzynie + waga
             if (entry.skrzynie.isNotEmpty || entry.wagaNetto.isNotEmpty)
@@ -244,7 +363,8 @@ class _PlsCard extends ConsumerWidget {
                   if (entry.odpad.isNotEmpty) _QualityChip('ODPAD', '${entry.odpad}%'),
                   if (entry.twardosc.isNotEmpty) _QualityChip('TWARD.', entry.twardosc),
                   if (entry.kaliber.isNotEmpty) _QualityChip('KALIB.', '${entry.kaliber}%'),
-                  if (entry.zwrotPct.isNotEmpty) _QualityChip('ZWROT', '${entry.zwrotPct}%'),
+                  if (entry.zwrotPct.isNotEmpty && (double.tryParse(entry.zwrotPct) ?? 0) > 0)
+                    _QualityChip('ZWROT', '${entry.zwrotPct}%'),
                 ],
               ),
             ],
@@ -254,18 +374,7 @@ class _PlsCard extends ConsumerWidget {
             Row(
               children: [
                 const Spacer(),
-                if (entry.status == 'PRZYJETO')
-                  TextButton.icon(
-                    onPressed: () => _przeslijDoStanow(context, ref),
-                    icon: const Icon(Icons.send_outlined, size: 16),
-                    label: const Text('Prześlij do Stanów'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppTheme.primaryMid,
-                      textStyle:
-                          const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                if (entry.status == 'PRZESŁANO')
+                if (entry.status == 'PRZESŁANO' || entry.status == 'PRZYJETO')
                   TextButton.icon(
                     onPressed: () => _rozlicz(context, ref),
                     icon: const Icon(Icons.check_circle_outline, size: 16),
@@ -517,46 +626,72 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
   late final TextEditingController _kaliberCtrl;
   late final TextEditingController _zwrotCtrl;
   late final TextEditingController _wagaNettoCtrl;
+  late final TextEditingController _odmianaCtrl;
+  late final TextEditingController _stanOpakCtrl;
+  late final TextEditingController _stanAutoCtrl;
   late String _status;
+  late String _przeznaczenie;
 
   @override
   void initState() {
     super.initState();
-    final e      = widget.entry;
-    _brixCtrl    = TextEditingController(text: e.brix);
-    _odpadCtrl   = TextEditingController(text: e.odpad);
-    _twardCtrl   = TextEditingController(text: e.twardosc);
-    _kaliberCtrl = TextEditingController(text: e.kaliber);
-    _zwrotCtrl   = TextEditingController(text: e.zwrotPct);
+    final e        = widget.entry;
+    _brixCtrl      = TextEditingController(text: e.brix);
+    _odpadCtrl     = TextEditingController(text: e.odpad);
+    _twardCtrl     = TextEditingController(text: e.twardosc);
+    _kaliberCtrl   = TextEditingController(text: e.kaliber);
+    _zwrotCtrl     = TextEditingController(text: e.zwrotPct);
     _wagaNettoCtrl = TextEditingController(text: e.wagaNetto);
-    _status      = e.status;
+    _odmianaCtrl   = TextEditingController(text: e.odmiana);
+    _stanOpakCtrl  = TextEditingController(text: e.stanOpak);
+    _stanAutoCtrl  = TextEditingController(text: e.stanAuto);
+    _status        = e.status;
+    _przeznaczenie = e.przeznaczenie;
   }
 
   @override
   void dispose() {
-    for (final c in [_brixCtrl, _odpadCtrl, _twardCtrl, _kaliberCtrl, _zwrotCtrl, _wagaNettoCtrl]) c.dispose();
+    for (final c in [_brixCtrl, _odpadCtrl, _twardCtrl, _kaliberCtrl,
+        _zwrotCtrl, _wagaNettoCtrl, _odmianaCtrl, _stanOpakCtrl, _stanAutoCtrl]) c.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    final db    = FirebaseFirestore.instance;
+    final docId = widget.entry.id;
     try {
-      await FirebaseFirestore.instance
-          .collection(AppConstants.colDeliveries)
-          .doc(widget.entry.id)
-          .update({
-        'brix':       _brixCtrl.text.trim(),
-        'odpad':      _odpadCtrl.text.trim(),
-        'twardosc':   _twardCtrl.text.trim(),
-        'kaliber':    _kaliberCtrl.text.trim(),
-        'zwrot_pct':  _zwrotCtrl.text.trim(),
-        'waga_netto': _wagaNettoCtrl.text.trim(),
-        'status':     _status,
+      final batch = db.batch();
+      // deliveries
+      batch.update(db.collection(AppConstants.colDeliveries).doc(docId), {
+        'brix':            _brixCtrl.text.trim(),
+        'odpad':           _odpadCtrl.text.trim(),
+        'twardosc':        _twardCtrl.text.trim(),
+        'kaliber':         _kaliberCtrl.text.trim(),
+        'zwrot_pct':       _zwrotCtrl.text.trim(),
+        'waga_netto':      _wagaNettoCtrl.text.trim(),
+        'odmiana':         _odmianaCtrl.text.trim(),
+        'przeznaczenie':   _przeznaczenie,
+        'stan_opakowania': _stanOpakCtrl.text.trim(),
+        'stan_samochodu':  _stanAutoCtrl.text.trim(),
+        'status':          _status,
+        'editedAt':        FieldValue.serverTimestamp(),
       });
+      // crateStates — sync wagaNetto i przeznaczenie
+      final crateSnap = await db.collection(AppConstants.colCrateStates).doc(docId).get();
+      if (crateSnap.exists) {
+        final newKg = double.tryParse(_wagaNettoCtrl.text.replaceAll(',', '.')) ?? 0;
+        batch.update(crateSnap.reference, {
+          'kg_total':      newKg,
+          'przeznaczenie': _przeznaczenie,
+          'odmiana':       _odmianaCtrl.text.trim(),
+        });
+      }
+      await batch.commit();
       if (mounted) {
         setState(() { _editing = false; _saving = false; });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Zapisano zmiany'), backgroundColor: AppTheme.successGreen));
+            content: Text('Zapisano i zsynchronizowano'), backgroundColor: AppTheme.successGreen));
       }
     } catch (e) {
       if (mounted) {
@@ -594,7 +729,7 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
                 Text(e.lot.isNotEmpty ? e.lot : e.id,
                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800,
                         color: AppTheme.primaryDark, fontFamily: 'monospace')),
-                Text('${e.data}  •  Dostawa ${e.nrDostawy}',
+                Text('${e.data}  •  ${e.lot}',
                     style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
               ])),
               if (e.status.isNotEmpty)
@@ -635,9 +770,16 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
           children: [
             _DetailSection('DANE DOSTAWY', [
               _DetailRow('Dostawca', e.dostawca),
+              _DetailRow('Data', e.data),
               _DetailRow('Owoc', e.owoc),
-              if (e.odmiana.isNotEmpty) _DetailRow('Odmiana', e.odmiana),
-              _DetailRow('Przeznaczenie', e.przeznaczenie),
+              _editing
+                  ? _PlsEditRow('Odmiana', _odmianaCtrl)
+                  : (e.odmiana.isNotEmpty ? _DetailRow('Odmiana', e.odmiana) : const SizedBox.shrink()),
+              _editing
+                  ? _PlsDropRow('Przeznaczenie', _przeznaczenie,
+                      ['Przecier', 'Sok', 'Obieranie', 'Świeże'],
+                      (v) => setState(() => _przeznaczenie = v!))
+                  : _DetailRow('Przeznaczenie', e.przeznaczenie),
             ]),
             const SizedBox(height: 12),
             _DetailSection('WAGI', [
@@ -659,6 +801,15 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
                   : _DetailRow('PW (kaliber)', e.kaliber.isNotEmpty ? '${e.kaliber}%' : '—'),
               _editing ? _PlsEditRow('Zwrot %', _zwrotCtrl, suffix: '%')
                   : _DetailRow('Zwrot', e.zwrotPct.isNotEmpty ? '${e.zwrotPct}%' : '—'),
+            ]),
+            const SizedBox(height: 12),
+            _DetailSection('STAN', [
+              _editing
+                  ? _PlsEditRow('Opakowanie', _stanOpakCtrl)
+                  : _DetailRow('Stan opakowania', e.stanOpak.isNotEmpty ? e.stanOpak : '—'),
+              _editing
+                  ? _PlsEditRow('Samochód', _stanAutoCtrl)
+                  : _DetailRow('Stan samochodu', e.stanAuto.isNotEmpty ? e.stanAuto : '—'),
             ]),
             if (_editing && widget.isAdmin) ...[
               const SizedBox(height: 12),
@@ -690,6 +841,29 @@ class _PlsEditRow extends StatelessWidget {
             suffix: suffix != null ? Text(suffix!) : null,
             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
         keyboardType: TextInputType.number,
+      )),
+    ]),
+  );
+}
+
+class _PlsDropRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+  const _PlsDropRow(this.label, this.value, this.options, this.onChanged);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(children: [
+      SizedBox(width: 120, child: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+      Expanded(child: DropdownButtonFormField<String>(
+        value: options.contains(value) ? value : null,
+        decoration: const InputDecoration(isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
+        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+        onChanged: onChanged,
       )),
     ]),
   );
@@ -802,6 +976,62 @@ class _ErrorView extends StatelessWidget {
           ),
         ),
       );
+}
+
+// ── Przycisk "Wpisz wagę netto" ───────────────────────────────────────────────
+
+class _WpisWageButton extends StatelessWidget {
+  final PlsEntry entry;
+  const _WpisWageButton({required this.entry});
+
+  int get _drewIl {
+    final p = entry.skrzynie.split('/');
+    return int.tryParse(p.isNotEmpty ? p[0].trim() : '') ?? 0;
+  }
+
+  int get _plastIl {
+    final p = entry.skrzynie.split('/');
+    return int.tryParse(p.length > 1 ? p[1].trim() : '') ?? 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => showWpisWageDialog(
+        context,
+        lot: entry.lot,
+        docId: entry.id,
+        drewIl: _drewIl,
+        plastIl: _plastIl,
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.errorRed.withAlpha(15),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.errorRed.withAlpha(80)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Brak wagi netto — uzupełnij',
+                style: TextStyle(fontSize: 13, color: AppTheme.errorRed, fontWeight: FontWeight.w600)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.errorRed,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text('WPISZ',
+                style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 class _EmptyView extends StatelessWidget {

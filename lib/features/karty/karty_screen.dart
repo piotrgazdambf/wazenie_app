@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../../shared/widgets/wpisz_wage_dialog.dart';
 import '../kw/kw_label_generator.dart';
 import '../kw/kw_pdf_generator.dart';
 
@@ -29,6 +30,8 @@ class KartaEntry {
   final String wagaA1Roz;
   final String wagaA2Zal;
   final String wagaA2Roz;
+  final String kwgType;
+  final bool wagaNettoBrak;
   final String brix;
   final String odpad;
   final String twardosc;
@@ -65,6 +68,8 @@ class KartaEntry {
     required this.stanAuto,
     required this.status,
     required this.isKwg,
+    this.kwgType = '',
+    this.wagaNettoBrak = false,
   });
 
   factory KartaEntry.fromFirestore(String id, Map<String, dynamic> d) => KartaEntry(
@@ -93,6 +98,8 @@ class KartaEntry {
     stanAuto:     d['stan_samochodu'] as String? ?? '',
     status:       d['status'] as String? ?? '',
     isKwg:        d['is_kwg'] as bool? ?? false,
+    kwgType:      d['kwg_type'] as String? ?? '',
+    wagaNettoBrak: d['waga_netto_brak'] as bool? ?? false,
   );
 }
 
@@ -117,8 +124,31 @@ class KartyScreen extends ConsumerStatefulWidget {
   ConsumerState<KartyScreen> createState() => _KartyScreenState();
 }
 
-class _KartyScreenState extends ConsumerState<KartyScreen> {
+class _KartyScreenState extends ConsumerState<KartyScreen>
+    with SingleTickerProviderStateMixin {
   String _search = '';
+  late TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  List<KartaEntry> _filter(List<KartaEntry> list, String tab) {
+    switch (tab) {
+      case 'czaplin': return list.where((e) => !e.isKwg).toList();
+      case 'grojecka': return list.where((e) => e.isKwg && e.kwgType == 'G').toList();
+      case 'rylex': return list.where((e) => e.isKwg && e.kwgType == 'R').toList();
+      default: return list;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +162,19 @@ class _KartyScreenState extends ConsumerState<KartyScreen> {
         appBar: AppBar(
           title: const Text('Karty Ważenia'),
           leading: BackButton(onPressed: () => context.go('/home')),
+          bottom: TabBar(
+            controller: _tabCtrl,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            isScrollable: true,
+            tabs: const [
+              Tab(text: 'Wszystkie'),
+              Tab(text: 'Czaplin'),
+              Tab(text: 'Grójecka'),
+              Tab(text: 'RYLEX'),
+            ],
+          ),
         ),
         body: Column(
           children: [
@@ -157,7 +200,7 @@ class _KartyScreenState extends ConsumerState<KartyScreen> {
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => _ErrorView(message: e.toString()),
                 data: (list) {
-                  final filtered = _search.isEmpty
+                  final searched = _search.isEmpty
                       ? list
                       : list.where((e) =>
                           e.lot.toLowerCase().contains(_search) ||
@@ -165,13 +208,34 @@ class _KartyScreenState extends ConsumerState<KartyScreen> {
                           e.dostawca.toLowerCase().contains(_search) ||
                           e.nrDostawy.toLowerCase().contains(_search)).toList();
 
-                  if (filtered.isEmpty) return const _EmptyView();
+                  Widget buildTab(List<KartaEntry> items) {
+                    if (items.isEmpty) return const _EmptyView();
+                    final grouped = <String, List<KartaEntry>>{};
+                    for (final e in items) {
+                      final key = e.lot.replaceAll(RegExp(r'\d+$'), '');
+                      grouped.putIfAbsent(key, () => []);
+                      grouped[key]!.add(e);
+                    }
+                    final keys = grouped.keys.toList();
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                      itemCount: keys.length,
+                      itemBuilder: (ctx, i) => _DeliveryGroup(
+                        baseLot: keys[i],
+                        entries: grouped[keys[i]]!,
+                        isAdmin: isAdmin,
+                      ),
+                    );
+                  }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                    itemCount: filtered.length,
-                    itemBuilder: (ctx, i) =>
-                        _KartaCard(entry: filtered[i], isAdmin: isAdmin),
+                  return TabBarView(
+                    controller: _tabCtrl,
+                    children: [
+                      buildTab(searched),
+                      buildTab(_filter(searched, 'czaplin')),
+                      buildTab(_filter(searched, 'grojecka')),
+                      buildTab(_filter(searched, 'rylex')),
+                    ],
                   );
                 },
               ),
@@ -183,12 +247,194 @@ class _KartyScreenState extends ConsumerState<KartyScreen> {
   }
 }
 
+// ── Grupowanie dostaw ─────────────────────────────────────────────────────────
+
+class _DeliveryGroup extends ConsumerStatefulWidget {
+  final String baseLot;
+  final List<KartaEntry> entries;
+  final bool isAdmin;
+  const _DeliveryGroup({required this.baseLot, required this.entries, required this.isAdmin});
+
+  @override
+  ConsumerState<_DeliveryGroup> createState() => _DeliveryGroupState();
+}
+
+class _DeliveryGroupState extends ConsumerState<_DeliveryGroup> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final e0 = widget.entries.first;
+    final totalNetto = widget.entries.fold(0.0, (s, e) {
+      return s + (double.tryParse(e.wagaNetto.replaceAll(',', '.')) ?? 0);
+    });
+    final odmiany = widget.entries.map((e) => e.odmiana).where((o) => o.isNotEmpty).toList();
+    final owocLabel = _cap(e0.owoc) +
+        (odmiany.isNotEmpty ? '  •  ${odmiany.join(' / ')}' : '');
+
+    final hasIncomplete = widget.entries.any((e) => e.wagaNettoBrak);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: hasIncomplete
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppTheme.errorRed, width: 1.5))
+          : null,
+      child: Column(
+        children: [
+          // ── Nagłówek grupy ────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text(widget.baseLot,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15,
+                                color: AppTheme.primaryDark, fontFamily: 'monospace')),
+                        if (hasIncomplete) ...[
+                          const SizedBox(width: 6),
+                          const Icon(Icons.warning_amber_rounded,
+                              color: AppTheme.errorRed, size: 14),
+                        ],
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(owocLabel, style: const TextStyle(fontSize: 13)),
+                      Text(e0.dostawca,
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                      Text('${_fmtDate(e0.data)}  •  ${totalNetto.toStringAsFixed(0)} kg  •  ${widget.entries.length} ${widget.entries.length == 1 ? 'odmiana' : 'odmiany'}',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                    ],
+                  ),
+                ),
+                // Akcje: Dane | Podgląd PDF | Drukuj | Rozwiń
+                Column(
+                  children: [
+                    Row(children: [
+                      IconButton(
+                        icon: const Icon(Icons.info_outline, size: 20),
+                        tooltip: 'Dane',
+                        onPressed: () => _showDetail(context, widget.entries.first),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.visibility_outlined, size: 20),
+                        tooltip: 'Podgląd karty (PDF)',
+                        onPressed: () => _podgladPDF(context),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.print_outlined, size: 20),
+                        tooltip: 'Drukuj kartę',
+                        onPressed: () => _drukuj(context, widget.entries.first),
+                      ),
+                      IconButton(
+                        icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 22),
+                        tooltip: 'Odmiany',
+                        onPressed: () => setState(() => _expanded = !_expanded),
+                      ),
+                    ]),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // ── Lista odmian (rozwijana) ────────────────────────────────────
+          if (_expanded)
+            ...widget.entries.map((e) => Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
+              ),
+              child: _KartaCard(entry: e, isAdmin: widget.isAdmin, compact: true),
+            )),
+        ],
+      ),
+    );
+  }
+
+  void _showDetail(BuildContext context, KartaEntry e) {
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _KartaDetailSheet(entry: e, isAdmin: widget.isAdmin),
+    );
+  }
+
+  Future<void> _podgladPDF(BuildContext context) async {
+    try {
+      final snaps = await Future.wait(
+        widget.entries.map((e) => FirebaseFirestore.instance
+            .collection(AppConstants.colDeliveries).doc(e.id).get()),
+      );
+      final docs = snaps.where((d) => d.exists).map((d) => d.data()!).toList();
+      if (docs.isEmpty || !context.mounted) return;
+      final pdfData = KwPdfData.fromMultipleDocs(docs);
+      if (!context.mounted) return;
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text('Podgląd: ${widget.baseLot}')),
+          body: PdfPreview(
+            build: (_) => KwPdfGenerator.generate(pdfData),
+            maxPageWidth: 700,
+            allowPrinting: true,
+            allowSharing: true,
+            canChangePageFormat: false,
+            canDebug: false,
+          ),
+        ),
+      ));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd podglądu: $e'),
+              backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
+
+  Future<void> _drukuj(BuildContext context, KartaEntry _) async {
+    try {
+      final snaps = await Future.wait(
+        widget.entries.map((e) => FirebaseFirestore.instance
+            .collection(AppConstants.colDeliveries).doc(e.id).get()),
+      );
+      final docs = snaps.where((d) => d.exists).map((d) => d.data()!).toList();
+      if (docs.isEmpty || !context.mounted) return;
+      final pdfData = KwPdfData.fromMultipleDocs(docs);
+      await Printing.layoutPdf(
+        name: 'KartaWazenia_${widget.entries.first.lot}',
+        onLayout: (_) => KwPdfGenerator.generate(pdfData),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd druku: $e'),
+              backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
+
+  static String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  static String _fmtDate(String d) {
+    if (d.isEmpty) return '';
+    try {
+      final parts = d.split('-');
+      if (parts.length == 3) return '${parts[2]}.${parts[1]}.${parts[0]}';
+    } catch (_) {}
+    return d;
+  }
+}
+
 // ── Karta w liście ────────────────────────────────────────────────────────────
 
 class _KartaCard extends ConsumerWidget {
   final KartaEntry entry;
   final bool isAdmin;
-  const _KartaCard({required this.entry, required this.isAdmin});
+  final bool compact;
+  const _KartaCard({required this.entry, required this.isAdmin, this.compact = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -249,33 +495,40 @@ class _KartaCard extends ConsumerWidget {
                 ],
               ),
             ),
+            // Baner "brak wagi netto"
+            if (entry.wagaNettoBrak) ...[
+              const SizedBox(height: 8),
+              _KartaWpisButton(entry: entry),
+            ],
             const SizedBox(height: 10),
-            // Przyciski akcji
+            // compact: tylko Etykieta; pełny widok: Podgląd + Drukuj + Etykieta
             Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.visibility_outlined, size: 15),
-                  label: const Text('Podgląd'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    textStyle: const TextStyle(fontSize: 12),
+              if (!compact) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.visibility_outlined, size: 15),
+                    label: const Text('Podgląd'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                    onPressed: () => _podglad(context),
                   ),
-                  onPressed: () => _podglad(context),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.print_outlined, size: 15),
-                  label: const Text('Drukuj'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    textStyle: const TextStyle(fontSize: 12),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.print_outlined, size: 15),
+                    label: const Text('Drukuj'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                    onPressed: () => _drukuj(context),
                   ),
-                  onPressed: () => _drukuj(context),
                 ),
-              ),
-              const SizedBox(width: 6),
+                const SizedBox(width: 6),
+              ],
               Expanded(
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.label_outline, size: 15),
@@ -328,17 +581,23 @@ class _KartaCard extends ConsumerWidget {
           .collection(AppConstants.colDeliveries).doc(entry.id).get();
       if (!snap.exists) return;
       final d = snap.data()!;
-      final dateRaw = d['data'] as String? ?? '';
-      final dateStr = dateRaw.length == 10 && dateRaw[4] == '-'
-          ? '${dateRaw.substring(8)}.${dateRaw.substring(5,7)}.${dateRaw.substring(0,4)}'
-          : dateRaw;
+      String _fmt(String raw) => raw.length == 10 && raw[4] == '-'
+          ? '${raw.substring(8)}.${raw.substring(5,7)}.${raw.substring(0,4)}'
+          : raw;
+      final isKwgRG = (d['is_kwg'] == true) && (d['kwg_type'] as String? ?? '').isNotEmpty;
+      final rawData    = d['data']     as String? ?? '';
+      final rawDataWsg = d['data_wsg'] as String? ?? '';
+      // Dla RG: prawa data = WSG, lewa w LOT = data dostarczenia
+      final rightDate          = _fmt(isKwgRG && rawDataWsg.isNotEmpty ? rawDataWsg : rawData);
+      final dataDostarczenia   = isKwgRG ? _fmt(rawData) : '';
       final label = KwLabelData(
-        lot:           d['lot'] as String? ?? entry.lot,
-        odmiana:       d['odmiana'] as String? ?? entry.odmiana,
-        data:          dateStr,
-        dostawca:      d['dostawca'] as String? ?? entry.dostawca,
-        dostawcaKod:   d['dostawca_kod'] as String? ?? entry.dostawcaKod,
-        przeznaczenie: d['przeznaczenie'] as String? ?? entry.przeznaczenie,
+        lot:               d['lot'] as String? ?? entry.lot,
+        odmiana:           d['odmiana'] as String? ?? entry.odmiana,
+        data:              rightDate,
+        dataDostarczenia:  dataDostarczenia,
+        dostawca:          d['dostawca'] as String? ?? entry.dostawca,
+        dostawcaKod:       d['dostawca_kod'] as String? ?? entry.dostawcaKod,
+        przeznaczenie:     d['przeznaczenie'] as String? ?? entry.przeznaczenie,
       );
       await Printing.layoutPdf(
         name: 'Etykieta_${entry.lot}',
@@ -415,6 +674,8 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
   late final TextEditingController _kaliberCtrl;
   late final TextEditingController _zwrotCtrl;
   late final TextEditingController _wagaNettoCtrl;
+  late final TextEditingController _drewCtrl;
+  late final TextEditingController _plastCtrl;
   late String _status;
 
   @override
@@ -428,6 +689,10 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
     _zwrotCtrl   = TextEditingController(text: e.zwrotPct);
     _wagaNettoCtrl = TextEditingController(text: e.wagaNetto);
     _status      = e.status;
+    // Parsuj skrzynie "drew/plast"
+    final parts  = e.skrzynie.split('/');
+    _drewCtrl    = TextEditingController(text: parts.isNotEmpty ? parts[0].trim() : '');
+    _plastCtrl   = TextEditingController(text: parts.length > 1 ? parts[1].trim() : '');
   }
 
   @override
@@ -438,23 +703,67 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
     _kaliberCtrl.dispose();
     _zwrotCtrl.dispose();
     _wagaNettoCtrl.dispose();
+    _drewCtrl.dispose();
+    _plastCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Usuń kartę ważenia'),
+        content: Text(
+          'Na pewno usunąć kartę ${widget.entry.lot.isNotEmpty ? widget.entry.lot : widget.entry.nrDostawy}?\n\nTej operacji nie można cofnąć.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Anuluj'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Usuń', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final nav = Navigator.of(context);
+    await FirebaseFirestore.instance
+        .collection(AppConstants.colKwDocs)
+        .doc(widget.entry.id)
+        .delete();
+    if (mounted) nav.pop();
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      final wagaNetto = _wagaNettoCtrl.text.trim();
+      final brix      = _brixCtrl.text.trim();
+      final przezn    = widget.entry.przeznaczenie.toLowerCase();
+      // Flaga "brak wagi" znika gdy waga uzupełniona i BRIX (dla przecieru)
+      final brakFlaga = wagaNetto.isEmpty || (przezn == 'przecier' && brix.isEmpty);
+      final drew  = int.tryParse(_drewCtrl.text.trim())  ?? 0;
+      final plast = int.tryParse(_plastCtrl.text.trim()) ?? 0;
+
       await FirebaseFirestore.instance
           .collection(AppConstants.colDeliveries)
           .doc(widget.entry.id)
           .update({
-        'brix':       _brixCtrl.text.trim(),
-        'odpad':      _odpadCtrl.text.trim(),
-        'twardosc':   _twardCtrl.text.trim(),
-        'kaliber':    _kaliberCtrl.text.trim(),
-        'zwrot_pct':  _zwrotCtrl.text.trim(),
-        'waga_netto': _wagaNettoCtrl.text.trim(),
-        'status':     _status,
+        'brix':            brix,
+        'odpad':           _odpadCtrl.text.trim(),
+        'twardosc':        _twardCtrl.text.trim(),
+        'kaliber':         _kaliberCtrl.text.trim(),
+        'zwrot_pct':       _zwrotCtrl.text.trim(),
+        'waga_netto':      wagaNetto,
+        'waga_netto_brak': brakFlaga,
+        'skrzynie':        '${_drewCtrl.text.trim()}/${_plastCtrl.text.trim()}',
+        'skrzynie_drew':   drew,
+        'skrzynie_plast':  plast,
+        'status':          _status,
       });
       if (mounted) {
         setState(() { _editing = false; _saving = false; });
@@ -534,12 +843,18 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
                                 : const Text('Zapisz'),
                           ),
                         ])
-                      : IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              color: AppTheme.primaryMid),
-                          tooltip: 'Edytuj (admin)',
-                          onPressed: () => setState(() => _editing = true),
-                        ),
+                      : Row(children: [
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed),
+                            tooltip: 'Usuń kartę (admin)',
+                            onPressed: () => _confirmDelete(context),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, color: AppTheme.primaryMid),
+                            tooltip: 'Edytuj (admin)',
+                            onPressed: () => setState(() => _editing = true),
+                          ),
+                        ]),
               ]),
             ]),
           ),
@@ -565,8 +880,13 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
                   _editing
                       ? _EditRow('Netto', _wagaNettoCtrl, suffix: 'kg')
                       : _Row('Netto', '${e.wagaNetto} kg', bold: true),
-                  if (e.skrzynie.isNotEmpty)
-                    _Row('Skrzynie (D/P)', e.skrzynie),
+                  _editing
+                      ? Row(children: [
+                          Expanded(child: _EditRow('Skrz. drew.', _drewCtrl, suffix: 'szt')),
+                          const SizedBox(width: 8),
+                          Expanded(child: _EditRow('Skrz. plast.', _plastCtrl, suffix: 'szt')),
+                        ])
+                      : _Row('Skrzynie (D/P)', e.skrzynie.isNotEmpty ? e.skrzynie : '—'),
                 ]),
                 const SizedBox(height: 12),
 
@@ -833,6 +1153,62 @@ class _ErrorView extends StatelessWidget {
           ]),
         ),
       );
+}
+
+// ── Przycisk "Wpisz wagę netto" w karcie ─────────────────────────────────────
+
+class _KartaWpisButton extends StatelessWidget {
+  final KartaEntry entry;
+  const _KartaWpisButton({required this.entry});
+
+  int get _drewIl {
+    final p = entry.skrzynie.split('/');
+    return int.tryParse(p.isNotEmpty ? p[0].trim() : '') ?? 0;
+  }
+
+  int get _plastIl {
+    final p = entry.skrzynie.split('/');
+    return int.tryParse(p.length > 1 ? p[1].trim() : '') ?? 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => showWpisWageDialog(
+        context,
+        lot: entry.lot,
+        docId: entry.id,
+        drewIl: _drewIl,
+        plastIl: _plastIl,
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.errorRed.withAlpha(15),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.errorRed.withAlpha(80)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Brak wagi netto — uzupełnij',
+                style: TextStyle(fontSize: 13, color: AppTheme.errorRed, fontWeight: FontWeight.w600)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.errorRed,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text('WPISZ',
+                style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 class _EmptyView extends StatelessWidget {

@@ -25,6 +25,7 @@ class _OdmCtrl {
   final pwCtrl      = TextEditingController();
 
   double wagaNetto = 0;
+  bool zwrotVisible = false;
 
   void dispose() {
     nazwaCtrl.dispose();
@@ -110,7 +111,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   }
 
   void _listenOdm(_OdmCtrl o) {
-    for (final c in [o.drewCtrl, o.plastCtrl, o.zwrotCtrl]) {
+    for (final c in [o.drewCtrl, o.plastCtrl, o.zwrotCtrl, o.odpadCtrl]) {
       c.addListener(_recalc);
     }
   }
@@ -184,38 +185,12 @@ class _KwScreenState extends ConsumerState<KwScreen> {
 
   // ── Sprawdzenie twardości ────────────────────────────────────────────────────
 
-  Future<bool> _checkTwardosc() async {
-    final kod = widget.data.przeznaczenieKod;
-    if (kod != 'S' && kod != 'O') return true;
-
-    for (final o in _odm) {
-      final t = _p(o.twardCtrl.text);
-      if (o.twardCtrl.text.isNotEmpty && t < 4.5) {
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Niska twardość!'),
-            content: Text(
-              'Odmiana "${o.nazwaCtrl.text.isEmpty ? "bez nazwy" : o.nazwaCtrl.text}" '
-              'ma twardość $t < 4,5.\n\nCzy przekazać surowiec na PRZECIER?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Nie, zostaw'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Tak, na przecier'),
-              ),
-            ],
-          ),
-        );
-        if (go == true) return false; // użytkownik chce zmienić przeznaczenie
-      }
-    }
-    return true;
-  }
+  // Zwraca true jeśli można zapisać; auto-nadpisuje przeznaczenie na Przecier
+  // gdy jakakolwiek odmiana ma twardość < 4.5.
+  bool _hasNiskaTwardosc() => _odm.any((o) {
+    final t = _p(o.twardCtrl.text);
+    return o.twardCtrl.text.isNotEmpty && t < 4.5;
+  });
 
   // ── Zapis do Firestore ───────────────────────────────────────────────────────
 
@@ -228,14 +203,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       return;
     }
 
-    final ok = await _checkTwardosc();
-    if (!ok) return;
-
     setState(() => _saving = true);
 
     final session = ref.read(currentSessionProvider);
     final userId  = session?.user.id ?? 'unknown';
     final d       = widget.data;
+    final niskaTward = _hasNiskaTwardosc();
+    final effectivePrzeznaczenie    = niskaTward ? 'Przecier' : d.przeznaczenie;
+    final effectivePrzeznaczenieKod = niskaTward ? 'P'        : d.przeznaczenieKod;
     final db      = FirebaseFirestore.instance;
     final batch   = db.batch();
 
@@ -264,8 +239,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'nr_dostawy':        d.nrDostawy,
         'dostawca':          d.dostawcaNazwa,
         'dostawca_kod':      d.dostawcaKod,
-        'przeznaczenie':     d.przeznaczenie,
-        'przeznaczenie_kod': d.przeznaczenieKod,
+        'przeznaczenie':     effectivePrzeznaczenie,
+        'przeznaczenie_kod': effectivePrzeznaczenieKod,
         'owoc':              d.owoc,
         'odmiana':           o.nazwaCtrl.text.trim(),
         'skrzynie':          skrz,
@@ -294,7 +269,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           'mb_plast_il':   mbPlastCount,
           'mb_plast_waga': mbPlastWaga,
         },
-        'status':            'PRZYJETO',
+        'status':            'PRZESŁANO',
         'createdBy':         userId,
         'createdAt':         FieldValue.serverTimestamp(),
       });
@@ -332,7 +307,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           'owoc':            d.owoc,
           'dostawca':        'Skrzynie MB',
           'dostawca_kod':    'MB',
-          'przeznaczenie':   d.przeznaczenie,
+          'przeznaczenie':   effectivePrzeznaczenie,
           'nr_dostawy':      d.nrDostawy,
           'data':            dateStr,
           'drew_total':      mbDrewCount,
@@ -359,10 +334,27 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'waga_netto':   o.wagaNetto.toStringAsFixed(2),
         'owoc':         d.owoc,
         'odmiana':      o.nazwaCtrl.text.trim(),
-        'przeznaczenie':d.przeznaczenie,
+        'przeznaczenie':effectivePrzeznaczenie,
         'status':       'done',
         'createdAt':    FieldValue.serverTimestamp(),
       });
+
+      // crateActions — przyjęcie skrzyń (widoczne w zakładce Akcje skrzyń)
+      if (drewCount + plastCount > 0) {
+        batch.set(db.collection(AppConstants.colCrateActions).doc(), {
+          'lot':          lot,
+          'dostawca':     d.dostawcaNazwa,
+          'owoc':         d.owoc,
+          'odmiana':      o.nazwaCtrl.text.trim(),
+          'przeznaczenie':effectivePrzeznaczenie,
+          'nr_dostawy':   d.nrDostawy,
+          'data':         dateStr,
+          'akcja':        'Przyjęcie',
+          'drew_zdj':     drewCount,
+          'plast_zdj':    plastCount,
+          'createdAt':    FieldValue.serverTimestamp(),
+        });
+      }
     }
 
     // Zbuduj dane PDF i etykiet przed commitem (pola mogą zostać wyczyszczone)
@@ -376,7 +368,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       );
       if (mounted) {
         await _showSaveDialog(pdfData, labelData);
-        if (mounted) context.go('/pls');
+        // Nawigacja obsługiwana wewnątrz _showSaveDialog
       }
     } catch (e) {
       if (mounted) {
@@ -405,11 +397,65 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   @override
   Widget build(BuildContext context) {
     final d = widget.data;
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final hasData = _odm.any((o) =>
+          o.nazwaCtrl.text.isNotEmpty ||
+          o.brixCtrl.text.isNotEmpty ||
+          o.odpadCtrl.text.isNotEmpty ||
+          o.drewCtrl.text.isNotEmpty ||
+          o.plastCtrl.text.isNotEmpty);
+        if (!hasData) { if (mounted) context.go('/wsg/new'); return; }
+        final cont = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Niezapisana karta'),
+            content: const Text('Masz niezapisane dane. Co chcesz zrobić?'),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Zostań'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Wyjdź'),
+              ),
+            ],
+          ),
+        );
+        if (cont == false && mounted) context.go('/wsg/new');
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Karta Ważenia'),
-        leading: BackButton(onPressed: () => context.go('/wsg/new')),
+        leading: BackButton(onPressed: () async {
+          final hasData = _odm.any((o) =>
+            o.nazwaCtrl.text.isNotEmpty ||
+            o.brixCtrl.text.isNotEmpty ||
+            o.odpadCtrl.text.isNotEmpty);
+          if (!hasData) { context.go('/wsg/new'); return; }
+          final cont = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Niezapisana karta'),
+              content: const Text('Masz niezapisane dane. Co chcesz zrobić?'),
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Zostań'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Wyjdź'),
+                ),
+              ],
+            ),
+          );
+          if (cont == false && mounted) context.go('/wsg/new');
+        }),
       ),
       body: Form(
         key: _formKey,
@@ -452,7 +498,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           ],
         ),
       ),
-    );
+    ), // Scaffold
+    ); // PopScope
   }
 
   // ── Sekcje UI ────────────────────────────────────────────────────────────────
@@ -608,6 +655,9 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     final kod = widget.data.przeznaczenieKod;
     final showTward = kod == 'S' || kod == 'O';
     final showPw    = kod == 'O';
+    final owoc = widget.data.owoc.toLowerCase().replaceAll(' eko', '');
+    final showOdmiana = owoc.contains('jabłko') || owoc.contains('jab') ||
+        owoc.contains('gruszka') || owoc.contains('gruszk');
 
     return _SectionCard(
       title: 'Odmiana ${idx + 1}',
@@ -619,11 +669,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           : null,
       child: Column(
         children: [
-          TextFormField(
-            controller: o.nazwaCtrl,
-            decoration: const InputDecoration(labelText: 'Nazwa odmiany'),
-            textCapitalization: TextCapitalization.words,
-          ),
+          if (showOdmiana) ...[
+            TextFormField(
+              controller: o.nazwaCtrl,
+              decoration: const InputDecoration(labelText: 'Nazwa odmiany'),
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 8),
+          ],
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: _NumField('Skrzynie drew.', o.drewCtrl)),
@@ -631,7 +684,39 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             Expanded(child: _NumField('Skrzynie plast.', o.plastCtrl)),
           ]),
           const SizedBox(height: 8),
-          _NumField('Zwrot [%]', o.zwrotCtrl),
+          // Zwrot — wysuwany
+          GestureDetector(
+            onTap: () => setState(() => o.zwrotVisible = !o.zwrotVisible),
+            child: Row(children: [
+              Icon(o.zwrotVisible ? Icons.expand_less : Icons.expand_more,
+                  size: 16, color: AppTheme.textSecondary),
+              const SizedBox(width: 4),
+              const Text('Zwrot [%]',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              const SizedBox(width: 6),
+              if (!o.zwrotVisible && _p(o.zwrotCtrl.text) > 0)
+                Text('${o.zwrotCtrl.text}%',
+                    style: const TextStyle(fontSize: 12, color: AppTheme.warningOrange,
+                        fontWeight: FontWeight.w600)),
+            ]),
+          ),
+          if (o.zwrotVisible) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 120,
+              child: TextFormField(
+                controller: o.zwrotCtrl,
+                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  labelText: 'Zwrot [%]',
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           _AutoCalcRow('Waga netto odmiany [kg]', o.wagaNetto,
               big: true, highlight: true),
@@ -642,6 +727,23 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             const SizedBox(width: 8),
             Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl, required: true)),
           ]),
+          // Podgląd odpadu na żywo
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: o.odpadCtrl,
+            builder: (_, v, __) {
+              final pct = double.tryParse(v.text.replaceAll(',', '.')) ?? 0;
+              if (pct <= 0 || o.wagaNetto <= 0) return const SizedBox.shrink();
+              // wagaNetto już zawiera odpad — liczymy ile kg to daje
+              final odpadKg = pct < 100 ? o.wagaNetto / (1 - pct / 100) * pct / 100 : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Odpad: −${odpadKg.toStringAsFixed(1)} kg  →  netto: ${o.wagaNetto.toStringAsFixed(1)} kg',
+                  style: const TextStyle(fontSize: 11, color: AppTheme.warningOrange, fontWeight: FontWeight.w600),
+                ),
+              );
+            },
+          ),
           if (showTward) ...[
             const SizedBox(height: 8),
             _TwardoscField(ctrl: o.twardCtrl, required: true),
@@ -651,13 +753,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             _NumField('PW (kaliber ↓68 mm) [%]', o.pwCtrl, required: true),
           ],
           const SizedBox(height: 10),
-          // Przycisk etykiety — dostępny od razu
-          OutlinedButton.icon(
-            icon: const Icon(Icons.label_outline, size: 16),
+          // Przycisk etykiety
+          FilledButton.icon(
+            icon: const Icon(Icons.label, size: 16),
             label: const Text('Drukuj etykietę'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 36),
-              textStyle: const TextStyle(fontSize: 13),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(double.infinity, 40),
+              backgroundColor: AppTheme.primaryMid,
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
             ),
             onPressed: () => _drukujEtykieteOdmiany(idx, o),
           ),
@@ -770,43 +873,101 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   }
 
   Future<void> _showSaveDialog(KwPdfData pdfData, List<KwLabelData> labels) async {
-    final choice = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        icon: const Icon(Icons.check_circle, color: AppTheme.successGreen, size: 48),
-        title: const Text('Karta zapisana'),
-        content: const Text('Co chcesz zrobić?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'skip'),
-            child: const Text('Pomiń'),
-          ),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.label_outline, size: 18),
-            label: const Text('Etykiety'),
-            onPressed: () => Navigator.pop(context, 'label'),
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.print_outlined, size: 18),
-            label: const Text('Kartę KW'),
-            onPressed: () => Navigator.pop(context, 'kw'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (choice == 'kw') {
-      await Printing.layoutPdf(
-        name: 'KartaWazenia_${widget.data.nrDostawy}',
-        onLayout: (_) => KwPdfGenerator.generate(pdfData),
+    // Dialog wieloakcyjny — Wróć = wróć do formularza, Etykiety = drukuj wielokrotnie,
+    // Kartę KW = drukuj i przejdź do PLS
+    while (mounted) {
+      final choice = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          icon: const Icon(Icons.check_circle, color: AppTheme.successGreen, size: 48),
+          title: const Text('Karta zapisana'),
+          content: const Text('Co chcesz zrobić?'),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'back'),
+              child: const Text('Wróć do karty'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.label, size: 18),
+              label: const Text('Etykiety'),
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.successGreen),
+              onPressed: () => Navigator.pop(context, 'label'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.print_outlined, size: 18),
+              label: const Text('Kartę KW'),
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryMid),
+              onPressed: () => Navigator.pop(context, 'kw'),
+            ),
+          ],
+        ),
       );
-    } else if (choice == 'label') {
+      if (!mounted || choice == null) break;
+      if (choice == 'back') {
+        // Zostań w formularzu — nie naviguj
+        return;
+      } else if (choice == 'kw') {
+        await Printing.layoutPdf(
+          name: 'KartaWazenia_${widget.data.nrDostawy}',
+          onLayout: (_) => KwPdfGenerator.generate(pdfData),
+        );
+        // Po druku karty KW → idź do PLS
+        if (mounted) context.go('/pls');
+        return;
+      } else if (choice == 'label') {
+        await _drukujEtykietyZWyborem(labels);
+        // Po etykietach wróć do dialogu (można drukować wiele razy)
+      }
+    }
+  }
+
+  Future<void> _drukujEtykietyZWyborem(List<KwLabelData> labels) async {
+    if (labels.length == 1) {
       await Printing.layoutPdf(
-        name: 'Etykiety_${widget.data.nrDostawy}',
+        name: 'Etykieta_${labels[0].lot}',
         onLayout: (_) => KwLabelGenerator.generate(labels),
       );
+      return;
     }
+    if (!mounted) return;
+    // Wiele odmian — wybierz którą
+    final idx = await showDialog<int>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Wybierz etykietę'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...List.generate(labels.length, (i) => ListTile(
+              leading: CircleAvatar(
+                backgroundColor: AppTheme.primaryMid,
+                child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+              ),
+              title: Text(labels[i].odmiana.isNotEmpty ? labels[i].odmiana : 'Odmiana ${i + 1}'),
+              subtitle: Text(labels[i].lot, style: const TextStyle(fontSize: 11)),
+              onTap: () => Navigator.pop(context, i),
+            )),
+            const Divider(),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: AppTheme.accent,
+                child: Icon(Icons.select_all, color: Colors.white, size: 18),
+              ),
+              title: const Text('Wszystkie odmiany'),
+              onTap: () => Navigator.pop(context, -1),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (idx == null || !mounted) return;
+    final toPrint = idx == -1 ? labels : [labels[idx]];
+    await Printing.layoutPdf(
+      name: 'Etykieta_${toPrint[0].lot}',
+      onLayout: (_) => KwLabelGenerator.generate(toPrint),
+    );
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -958,27 +1119,61 @@ class _TwardoscField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: ctrl,
-      decoration: InputDecoration(
-        labelText: 'Twardość [kG/cm²]',
-        suffixIcon: ValueListenableBuilder<TextEditingValue>(
-          valueListenable: ctrl,
-          builder: (_, v, __) {
-            final t = double.tryParse(v.text.replaceAll(',', '.')) ?? 0;
-            if (v.text.isEmpty) return const SizedBox.shrink();
-            return Icon(
-              t < 4.5 ? Icons.warning_amber_rounded : Icons.check_circle_outline,
-              color: t < 4.5 ? AppTheme.warningOrange : AppTheme.successGreen,
-            );
-          },
-        ),
-      ),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-      validator: required
-          ? (v) => (v == null || v.trim().isEmpty) ? 'Wymagane' : null
-          : null,
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: ctrl,
+      builder: (_, v, __) {
+        final t = double.tryParse(v.text.replaceAll(',', '.')) ?? 0;
+        final isLow = v.text.isNotEmpty && t < 4.5;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: ctrl,
+              decoration: InputDecoration(
+                labelText: 'Twardość [kG/cm²]',
+                suffixIcon: v.text.isEmpty
+                    ? null
+                    : Icon(
+                        isLow ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                        color: isLow ? AppTheme.warningOrange : AppTheme.successGreen,
+                      ),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+              validator: this.required
+                  ? (v) => (v == null || v.trim().isEmpty) ? 'Wymagane' : null
+                  : null,
+            ),
+            if (isLow) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.warningOrange.withAlpha(20),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.warningOrange.withAlpha(80)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: AppTheme.warningOrange, size: 16),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Niska twardość — surowiec zostanie przeznaczony na PRZECIER',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.warningOrange,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

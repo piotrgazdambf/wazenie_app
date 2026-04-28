@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/constants.dart';
+import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 // ── Model CrateState ─────────────────────────────────────────────────────────
@@ -120,10 +121,9 @@ final crateStatesProvider = StreamProvider<List<CrateState>>((ref) =>
 
 final crateActionsProvider = StreamProvider<List<CrateAction>>((ref) =>
   FirebaseFirestore.instance
-      .collection(AppConstants.colMcrQueue)
-      .where('akcja', isEqualTo: 'Zejście cząstkowe')
+      .collection(AppConstants.colCrateActions)
       .orderBy('createdAt', descending: true)
-      .limit(100)
+      .limit(200)
       .snapshots()
       .map((s) => s.docs.map((d) => CrateAction.fromFirestore(d.id, d.data())).toList()));
 
@@ -151,10 +151,14 @@ class SkrzynieScreen extends ConsumerWidget {
                 },
               ),
             ],
-            bottom: const TabBar(tabs: [
-              Tab(text: 'Stany skrzyń'),
-              Tab(text: 'Akcje skrzyń'),
-            ]),
+            bottom: const TabBar(
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.white,
+              tabs: [
+                Tab(text: 'Stany skrzyń'),
+                Tab(text: 'Akcje skrzyń'),
+              ]),
           ),
           body: Column(children: [
             const OfflineBanner(),
@@ -252,6 +256,7 @@ class _StanyTab extends ConsumerWidget {
                   final i = entry.key;
                   final e = entry.value;
                   final isLast = i == sorted.length - 1;
+                  final isAdmin = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
                   return InkWell(
                     onTap: () => _showDostawcaLots(context, e.key, e.value.lots),
                     child: Container(
@@ -262,7 +267,7 @@ class _StanyTab extends ConsumerWidget {
                             : null,
                         border: isLast ? null : const Border(bottom: BorderSide(color: AppTheme.borderLight, width: 0.5)),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: Row(children: [
                         Expanded(
                           child: Text(e.key,
@@ -290,6 +295,16 @@ class _StanyTab extends ConsumerWidget {
                             ),
                           ),
                         ),
+                        if (isAdmin)
+                          SizedBox(
+                            width: 36,
+                            child: IconButton(
+                              icon: const Icon(Icons.settings, size: 16, color: AppTheme.textSecondary),
+                              padding: EdgeInsets.zero,
+                              tooltip: 'Korekta skrzyń',
+                              onPressed: () => _showKorekta(context, e.key, e.value.lots),
+                            ),
+                          ),
                       ]),
                     ),
                   );
@@ -308,6 +323,13 @@ class _StanyTab extends ConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _DostawcaLotsSheet(dostawca: dostawca, lots: lots),
+    );
+  }
+
+  void _showKorekta(BuildContext context, String dostawca, List<CrateState> lots) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => _KorektaDialog(dostawca: dostawca, lots: lots),
     );
   }
 }
@@ -357,9 +379,51 @@ class _DostawcaLotsSheet extends StatelessWidget {
             child: ListView.builder(
               controller: ctrl,
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-              itemCount: lots.length,
+              itemCount: lots.length + 1,
               itemBuilder: (_, i) {
-                final c = lots[i];
+                // Pierwsza pozycja — WSZYSTKIE
+                if (i == 0) {
+                  final totalDrew  = lots.fold(0, (s, c) => s + c.drewRemaining);
+                  final totalPlast = lots.fold(0, (s, c) => s + c.plastRemaining);
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    color: AppTheme.primaryDark,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          const Expanded(child: Text('WSZYSTKIE',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white))),
+                          Text('${totalDrew}D + ${totalPlast}P',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
+                        ]),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: (totalDrew + totalPlast) > 0 ? () {
+                              Navigator.of(context).pop();
+                              showDialog<void>(
+                                context: context,
+                                builder: (_) => _ZdejmijWszystkieDialog(dostawca: dostawca, lots: lots),
+                              );
+                            } : null,
+                            icon: const Icon(Icons.remove_circle_outline, size: 16),
+                            label: const Text('Wydaj skrzynie'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                              side: const BorderSide(color: Colors.white38),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              textStyle: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  );
+                }
+
+                final c = lots[i - 1];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: Padding(
@@ -436,6 +500,9 @@ class _AkcjeTab extends ConsumerWidget {
                 ? '${a.createdAt!.day.toString().padLeft(2,'0')}.${a.createdAt!.month.toString().padLeft(2,'0')}.${a.createdAt!.year}  ${a.createdAt!.hour.toString().padLeft(2,'0')}:${a.createdAt!.minute.toString().padLeft(2,'0')}'
                 : a.data;
 
+            final isPrzyjecie = a.akcja == 'Przyjęcie';
+            final actionColor = isPrzyjecie ? AppTheme.successGreen : AppTheme.errorRed;
+            final sign = isPrzyjecie ? '+' : '−';
             return Card(
               margin: const EdgeInsets.only(bottom: 6),
               child: Padding(
@@ -444,30 +511,55 @@ class _AkcjeTab extends ConsumerWidget {
                   Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(
-                      color: AppTheme.errorRed.withAlpha(20),
+                      color: actionColor.withAlpha(20),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.remove_circle_outline, size: 18, color: AppTheme.errorRed),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(a.dostawca.isNotEmpty ? a.dostawca : '—',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    Text(
-                      '${a.nrDostawy.isNotEmpty ? "Dost. ${a.nrDostawy}  •  " : ""}'
-                      '${a.owoc.isNotEmpty ? "${a.owoc}${a.odmiana.isNotEmpty ? " • ${a.odmiana}" : ""}  •  " : ""}'
-                      '${a.przeznaczenie}',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    child: Icon(
+                      isPrzyjecie ? Icons.add_circle_outline : Icons.remove_circle_outline,
+                      size: 18, color: actionColor,
                     ),
-                    Text(dateStr, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(a.dostawca.isNotEmpty ? a.dostawca : '—',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: actionColor.withAlpha(20),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(a.akcja,
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: actionColor)),
+                      ),
+                    ]),
+                    const SizedBox(height: 4),
+                    // Opis ilości skrzyń
+                    if (a.drewZdj > 0 || a.plastZdj > 0) ...[
+                      if (a.drewZdj > 0)
+                        Text(
+                          '${isPrzyjecie ? "Przyjęto" : "Wydano"} ${a.drewZdj} skrzyń drewnianych',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: actionColor),
+                        ),
+                      if (a.plastZdj > 0)
+                        Text(
+                          '${isPrzyjecie ? "Przyjęto" : "Wydano"} ${a.plastZdj} skrzyń plastikowych',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: actionColor),
+                        ),
+                      const SizedBox(height: 2),
+                    ],
+                    if (a.nrDostawy.isNotEmpty || a.owoc.isNotEmpty)
+                      Text(
+                        '${a.nrDostawy.isNotEmpty ? "Dost. ${a.nrDostawy}  •  " : ""}'
+                        '${a.owoc.isNotEmpty ? "${a.owoc}${a.odmiana.isNotEmpty ? " • ${a.odmiana}" : ""}" : ""}',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                      ),
+                    Text(dateStr, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                   ])),
-                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    if (a.drewZdj > 0)
-                      Text('−${a.drewZdj}D', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryMid)),
-                    if (a.plastZdj > 0)
-                      Text('−${a.plastZdj}P', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.accent)),
-                  ]),
                 ]),
               ),
             );
@@ -522,16 +614,14 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
         'updatedAt':       FieldValue.serverTimestamp(),
       });
 
-      await db.collection(AppConstants.colMcrQueue).add({
+      await db.collection(AppConstants.colCrateActions).add({
         'lot': s.lot, 'dostawca': s.dostawca,
-        'czas': '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}',
-        'akcja': 'Zejście cząstkowe',
-        'waga_netto': kg.toStringAsFixed(2),
         'owoc': s.owoc, 'odmiana': s.odmiana,
         'przeznaczenie': s.przeznaczenie,
         'nr_dostawy': s.nrDostawy, 'data': s.data,
+        'akcja': 'Zejście',
         'drew_zdj': _drewN, 'plast_zdj': _plastN,
-        'status': 'done', 'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) Navigator.of(context).pop();
@@ -646,4 +736,266 @@ class _EmptyView extends StatelessWidget {
       Text('Brak aktywnych skrzyń', style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
     ]),
   );
+}
+
+// ── Dialog wydania WSZYSTKICH skrzyń dostawcy ─────────────────────────────────
+
+class _ZdejmijWszystkieDialog extends StatefulWidget {
+  final String dostawca;
+  final List<CrateState> lots;
+  const _ZdejmijWszystkieDialog({required this.dostawca, required this.lots});
+
+  @override
+  State<_ZdejmijWszystkieDialog> createState() => _ZdejmijWszystkieDialogState();
+}
+
+class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
+  final _drewCtrl  = TextEditingController(text: '0');
+  final _plastCtrl = TextEditingController(text: '0');
+  bool _saving = false;
+
+  @override
+  void dispose() { _drewCtrl.dispose(); _plastCtrl.dispose(); super.dispose(); }
+
+  int get _drewN  => int.tryParse(_drewCtrl.text.trim()) ?? 0;
+  int get _plastN => int.tryParse(_plastCtrl.text.trim()) ?? 0;
+
+  int get _totalDrew  => widget.lots.fold(0, (s, c) => s + c.drewRemaining);
+  int get _totalPlast => widget.lots.fold(0, (s, c) => s + c.plastRemaining);
+
+  bool get _valid => (_drewN + _plastN) > 0 && _drewN <= _totalDrew && _plastN <= _totalPlast;
+
+  Future<void> _confirm() async {
+    if (!_valid) return;
+    setState(() => _saving = true);
+    try {
+      final db  = FirebaseFirestore.instance;
+      int drewLeft  = _drewN;
+      int plastLeft = _plastN;
+
+      final batch = db.batch();
+
+      // Zdejmuj kolejno z lotów (od pierwszego)
+      for (final c in widget.lots) {
+        if (drewLeft <= 0 && plastLeft <= 0) break;
+        final dZdj = drewLeft.clamp(0, c.drewRemaining);
+        final pZdj = plastLeft.clamp(0, c.plastRemaining);
+        if (dZdj + pZdj == 0) continue;
+
+        final newDrew  = c.drewRemaining - dZdj;
+        final newPlast = c.plastRemaining - pZdj;
+        batch.update(db.collection(AppConstants.colCrateStates).doc(c.id), {
+          'drew_remaining':  newDrew,
+          'plast_remaining': newPlast,
+          'active':          (newDrew + newPlast) > 0,
+          'updatedAt':       FieldValue.serverTimestamp(),
+        });
+        drewLeft  -= dZdj;
+        plastLeft -= pZdj;
+      }
+
+      // Jedna akcja zbiorcza
+      batch.set(db.collection(AppConstants.colCrateActions).doc(), {
+        'lot':          '',
+        'dostawca':     widget.dostawca,
+        'owoc':         '',
+        'odmiana':      '',
+        'przeznaczenie':'',
+        'nr_dostawy':   '',
+        'data':         '',
+        'akcja':        'Zejście',
+        'drew_zdj':     _drewN,
+        'plast_zdj':    _plastN,
+        'createdAt':    FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Wydaj skrzynie\n${widget.dostawca}',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.accent.withAlpha(60)),
+            ),
+            child: Text(
+              'Łącznie u dostawcy: ${_totalDrew}D + ${_totalPlast}P',
+              style: const TextStyle(fontSize: 12, color: AppTheme.primaryDark),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: TextFormField(
+              controller: _drewCtrl,
+              decoration: InputDecoration(labelText: 'Drewn. (max $_totalDrew)'),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => setState(() {}),
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: TextFormField(
+              controller: _plastCtrl,
+              decoration: InputDecoration(labelText: 'Plast. (max $_totalPlast)'),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => setState(() {}),
+            )),
+          ]),
+          if (!_valid && (_drewN + _plastN) > 0) ...[
+            const SizedBox(height: 8),
+            const Text('Przekroczono dostępną ilość!',
+                style: TextStyle(fontSize: 11, color: AppTheme.errorRed)),
+          ],
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Anuluj')),
+        ElevatedButton(
+          onPressed: _valid && !_saving ? _confirm : null,
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+          child: _saving
+              ? const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Wydaj', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Korekta skrzyń (admin) ────────────────────────────────────────────────────
+
+class _KorektaDialog extends StatefulWidget {
+  final String dostawca;
+  final List<CrateState> lots;
+  const _KorektaDialog({required this.dostawca, required this.lots});
+
+  @override
+  State<_KorektaDialog> createState() => _KorektaDialogState();
+}
+
+class _KorektaDialogState extends State<_KorektaDialog> {
+  final _drewCtrl  = TextEditingController();
+  final _plastCtrl = TextEditingController();
+  final _noteCtrl  = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _drewCtrl.dispose();
+    _plastCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final drewDelta  = int.tryParse(_drewCtrl.text.trim()) ?? 0;
+    final plastDelta = int.tryParse(_plastCtrl.text.trim()) ?? 0;
+    if (drewDelta == 0 && plastDelta == 0) return;
+
+    setState(() => _saving = true);
+    final db   = FirebaseFirestore.instance;
+    final now  = DateTime.now();
+    final date = '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+
+    try {
+      // Aktualizuj pierwszą aktywną skrzynię dostawcy
+      if (widget.lots.isNotEmpty) {
+        final docId = widget.lots.first.id;
+        final snap  = await db.collection(AppConstants.colCrateStates).doc(docId).get();
+        if (snap.exists) {
+          final d     = snap.data()!;
+          final drew  = ((d['drew_remaining'] as num?)?.toInt() ?? 0) + drewDelta;
+          final plast = ((d['plast_remaining'] as num?)?.toInt() ?? 0) + plastDelta;
+          await db.collection(AppConstants.colCrateStates).doc(docId).update({
+            'drew_remaining':  drew.clamp(0, 9999),
+            'plast_remaining': plast.clamp(0, 9999),
+          });
+        }
+      }
+      // Zapisz akcję korekty
+      await db.collection(AppConstants.colCrateActions).add({
+        'lot':         'KOREKTA',
+        'dostawca':    widget.dostawca,
+        'dostawca_kod':'—',
+        'nr_dostawy':  '—',
+        'data':        date,
+        'akcja':       'Korekta',
+        'drew_delta':  drewDelta,
+        'plast_delta': plastDelta,
+        'notatka':     _noteCtrl.text.trim(),
+        'createdAt':   FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Korekta skrzyń\n${widget.dostawca}',
+          style: const TextStyle(fontSize: 15)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Wpisz zmianę (np. +5 lub -3).',
+              style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: TextFormField(
+              controller: _drewCtrl,
+              decoration: const InputDecoration(labelText: 'Drewniane (Δ)', hintText: 'np. -3'),
+              keyboardType: const TextInputType.numberWithOptions(signed: true),
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: TextFormField(
+              controller: _plastCtrl,
+              decoration: const InputDecoration(labelText: 'Plastikowe (Δ)', hintText: 'np. +10'),
+              keyboardType: const TextInputType.numberWithOptions(signed: true),
+            )),
+          ]),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _noteCtrl,
+            decoration: const InputDecoration(labelText: 'Notatka (opcjonalna)'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anuluj')),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Zapisz korektę'),
+        ),
+      ],
+    );
+  }
 }

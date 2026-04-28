@@ -16,6 +16,7 @@ class StanOdmiany {
   final String odmiana;
   final String wagaNetto;
   final String dostawca;
+  final String dostawcaKod;
   final String owoc;
   final String przeznaczenie;
   final String nrDostawy;
@@ -28,6 +29,7 @@ class StanOdmiany {
     required this.odmiana,
     required this.wagaNetto,
     required this.dostawca,
+    this.dostawcaKod = '',
     required this.owoc,
     required this.przeznaczenie,
     required this.nrDostawy,
@@ -48,6 +50,7 @@ class StanOdmiany {
       odmiana:       d['odmiana'] as String? ?? '',
       wagaNetto:     d['waga_netto'] as String? ?? '',
       dostawca:      d['dostawca'] as String? ?? '',
+      dostawcaKod:   d['dostawca_kod'] as String? ?? '',
       owoc:          d['owoc'] as String? ?? '',
       przeznaczenie: d['przeznaczenie'] as String? ?? '',
       nrDostawy:     d['nr_dostawy'] as String? ?? '',
@@ -160,12 +163,43 @@ class StanyScreen extends ConsumerStatefulWidget {
   ConsumerState<StanyScreen> createState() => _StanyScreenState();
 }
 
-class _StanyScreenState extends ConsumerState<StanyScreen> {
+class _StanyScreenState extends ConsumerState<StanyScreen>
+    with SingleTickerProviderStateMixin {
   String _filter = 'Wszystkie';
+  late TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
 
   static const _filters = ['Wszystkie', 'Przecier', 'Sok', 'Obieranie', 'Świeże'];
 
   List<Widget> _buildTwoColumns(
+    List<StanOdmiany> entries,
+    Map<String, _CrateInfo> crateMap,
+    WidgetRef ref,
+  ) {
+    // Jedna kolumna — czytelniej na telefonie i tablecie
+    return entries.map((a) => _LotCard(
+            entry: a,
+            przeznaczenieColor: _przeznaczenieColor(a.przeznaczenie),
+            crateInfo: crateMap[a.id],
+            onPrzeznaczenieChanged: () {
+              ref.invalidate(stanyProvider);
+              ref.invalidate(crateInfoMapProvider);
+            },
+          )).toList();
+  }
+
+  List<Widget> _buildTwoColumnsOLD(
     List<StanOdmiany> entries,
     Map<String, _CrateInfo> crateMap,
     WidgetRef ref,
@@ -211,6 +245,18 @@ class _StanyScreenState extends ConsumerState<StanyScreen> {
     return OfflineOverflowGuard(
       child: Scaffold(
         backgroundColor: AppTheme.background,
+        floatingActionButton: stanyAsync.maybeWhen(
+          data: (entries) => entries.isNotEmpty ? FloatingActionButton.extended(
+            icon: const Icon(Icons.arrow_downward),
+            label: const Text('Ściągnij ze stanów'),
+            backgroundColor: AppTheme.primaryMid,
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => _SciagnijDialog(entries: entries),
+            ),
+          ) : null,
+          orElse: () => null,
+        ),
         appBar: AppBar(
           title: const Text('Stany surowcowe'),
           leading: BackButton(onPressed: () => context.go('/home')),
@@ -223,59 +269,77 @@ class _StanyScreenState extends ConsumerState<StanyScreen> {
               },
             ),
           ],
+          bottom: TabBar(
+            controller: _tabCtrl,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            tabs: const [Tab(text: 'Stany'), Tab(text: 'Dostawcy')],
+          ),
         ),
         body: Column(
           children: [
             const OfflineBanner(),
-            // Filter chips
-            SizedBox(
-              height: 48,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                children: _filters.map((f) {
-                  final sel = _filter == f;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(f),
-                      selected: sel,
-                      onSelected: (_) => setState(() => _filter = f),
-                      selectedColor: AppTheme.primaryMid.withAlpha(30),
-                      checkmarkColor: AppTheme.primaryMid,
-                      labelStyle: TextStyle(
-                        fontSize: 12,
-                        fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                        color: sel ? AppTheme.primaryMid : AppTheme.textSecondary,
+            Expanded(
+              child: TabBarView(
+                controller: _tabCtrl,
+                children: [
+                  // ── Tab 1: Stany ──────────────────────────────────────
+                  Column(children: [
+                    SizedBox(
+                      height: 48,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        children: _filters.map((f) {
+                          final sel = _filter == f;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(f),
+                              selected: sel,
+                              onSelected: (_) => setState(() => _filter = f),
+                              selectedColor: AppTheme.primaryMid.withAlpha(30),
+                              checkmarkColor: AppTheme.primaryMid,
+                              labelStyle: TextStyle(
+                                fontSize: 12,
+                                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                                color: sel ? AppTheme.primaryMid : AppTheme.textSecondary,
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
-            Expanded(
-              child: stanyAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => _ErrorView(message: e.toString()),
-                data: (allEntries) {
-                  final filtered = allEntries
-                      .where((e) => _matchesFilter(e.przeznaczenie, _filter))
-                      .toList();
-
-                  if (filtered.isEmpty && allEntries.isEmpty) return const _EmptyView();
-
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
-                    children: [
-                      _MagazynSummaryCard(entries: allEntries),
-                      const SizedBox(height: 10),
-                      if (filtered.isEmpty)
-                        const _EmptyView()
-                      else
-                        ..._buildTwoColumns(filtered, crateMap, ref),
-                    ],
-                  );
-                },
+                    Expanded(
+                      child: stanyAsync.when(
+                        loading: () => const Center(child: CircularProgressIndicator()),
+                        error: (e, _) => _ErrorView(message: e.toString()),
+                        data: (allEntries) {
+                          final filtered = allEntries
+                              .where((e) => _matchesFilter(e.przeznaczenie, _filter))
+                              .toList();
+                          if (filtered.isEmpty && allEntries.isEmpty) return const _EmptyView();
+                          return ListView(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                            children: [
+                              _MagazynSummaryCard(entries: filtered),
+                              const SizedBox(height: 10),
+                              if (filtered.isEmpty) const _EmptyView()
+                              else ..._buildTwoColumns(filtered, crateMap, ref),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ]),
+                  // ── Tab 2: Dostawcy ───────────────────────────────────
+                  stanyAsync.when(
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => _ErrorView(message: e.toString()),
+                    data: (allEntries) => _DostawcyView(entries: allEntries),
+                  ),
+                ],
               ),
             ),
           ],
@@ -449,6 +513,66 @@ class _MagazynSummaryCard extends StatelessWidget {
 
   static String _fmt(double v) => v.toStringAsFixed(0);
 }
+
+// ── Zakładka Dostawcy ─────────────────────────────────────────────────────────
+
+class _DostawcyView extends StatelessWidget {
+  final List<StanOdmiany> entries;
+  const _DostawcyView({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    // Grupuj: owoc → odmiana+dostawca → kg
+    final Map<String, Map<String, double>> byOwocKey = {};
+    final Map<String, String> keyLabel = {};
+
+    for (final e in entries) {
+      final owoc = e.owoc.trim().isEmpty ? '—' : _cap(e.owoc.trim());
+      byOwocKey.putIfAbsent(owoc, () => {});
+      final odmLabel = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
+      final key = '${odmLabel}__${e.dostawcaKod}__${e.dostawca}';
+      keyLabel[key] = '${_cap(odmLabel)}   ${e.dostawcaKod.isNotEmpty ? e.dostawcaKod : ''}  —  ${e.dostawca}';
+      byOwocKey[owoc]![key] = (byOwocKey[owoc]![key] ?? 0) + e.kgValue;
+    }
+
+    if (byOwocKey.isEmpty) return const _EmptyView();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+      children: byOwocKey.entries.map((owocEntry) {
+        final owoc = owocEntry.key;
+        final rows = owocEntry.value.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        final total = rows.fold(0.0, (s, r) => s + r.value);
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            title: Text(owoc, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            subtitle: Text('${total.toStringAsFixed(0)} kg łącznie',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+            children: rows.map((r) {
+              final label = keyLabel[r.key] ?? r.key;
+              return ListTile(
+                dense: true,
+                title: Text(label, style: const TextStyle(fontSize: 13)),
+                trailing: Text(
+                  '${r.value.toStringAsFixed(0)} kg',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  static String _cap(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _FruitGroupHeader extends StatelessWidget {
   final String owoc;
@@ -654,10 +778,10 @@ class _LotCard extends StatelessWidget {
   String _kgPerCrateLabel(_CrateInfo c) {
     final avg = c.total > 0 ? (c.kgRemaining / c.total) : 0.0;
     if (c.drewRemaining > 0 && c.plastRemaining > 0) {
-      return '~${avg.toStringAsFixed(1)} kg/D  ~${avg.toStringAsFixed(1)} kg/P';
+      return '~${avg.toStringAsFixed(0)} kg/D  ~${avg.toStringAsFixed(0)} kg/P';
     }
-    if (c.drewRemaining > 0) return '~${avg.toStringAsFixed(1)} kg/D';
-    return '~${avg.toStringAsFixed(1)} kg/P';
+    if (c.drewRemaining > 0) return '~${avg.toStringAsFixed(0)} kg/D';
+    return '~${avg.toStringAsFixed(0)} kg/P';
   }
 }
 
@@ -942,4 +1066,176 @@ class _EmptyView extends StatelessWidget {
           ],
         ),
       );
+}
+
+// ── Ściągnij ze stanów (do MCR) ───────────────────────────────────────────────
+
+class _SciagnijDialog extends StatefulWidget {
+  final List<StanOdmiany> entries;
+  const _SciagnijDialog({required this.entries});
+
+  @override
+  State<_SciagnijDialog> createState() => _SciagnijDialogState();
+}
+
+class _SciagnijDialogState extends State<_SciagnijDialog> {
+  String? _owoc;
+  String? _lot;
+  bool _useWaga = true;
+  final _wagaCtrl = TextEditingController();
+  final _drewCtrl = TextEditingController();
+  final _plastCtrl = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _wagaCtrl.dispose();
+    _drewCtrl.dispose();
+    _plastCtrl.dispose();
+    super.dispose();
+  }
+
+  List<String> get _owoce => widget.entries
+      .map((e) => e.owoc.trim().isEmpty ? '—' : e.owoc.trim())
+      .toSet().toList()..sort();
+
+  List<StanOdmiany> get _odmiany => _owoc == null ? [] :
+      widget.entries.where((e) => e.owoc.trim() == _owoc).toList();
+
+  Future<void> _save() async {
+    if (_lot == null) return;
+    final entry = widget.entries.firstWhere((e) => e.id == _lot);
+    final wagaKg = double.tryParse(_wagaCtrl.text.replaceAll(',', '.')) ?? 0;
+    final drewZdj = int.tryParse(_drewCtrl.text) ?? 0;
+    final plastZdj = int.tryParse(_plastCtrl.text) ?? 0;
+    if (_useWaga && wagaKg <= 0) return;
+    if (!_useWaga && drewZdj == 0 && plastZdj == 0) return;
+
+    setState(() => _saving = true);
+    final db  = FirebaseFirestore.instance;
+    final now = DateTime.now();
+    try {
+      final batch = db.batch();
+      // MCR zejście
+      final mcrRef = db.collection(AppConstants.colMcrQueue).doc();
+      batch.set(mcrRef, {
+        'lot':          entry.lot,
+        'czas':         now.toIso8601String(),
+        'akcja':        'Zejście',
+        'waga_netto':   _useWaga ? wagaKg.toStringAsFixed(2) : '0',
+        'owoc':         entry.owoc,
+        'odmiana':      entry.odmiana,
+        'przeznaczenie':entry.przeznaczenie,
+        'drew_zdj':     _useWaga ? 0 : drewZdj,
+        'plast_zdj':    _useWaga ? 0 : plastZdj,
+        'status':       'done',
+        'createdAt':    FieldValue.serverTimestamp(),
+      });
+      // CrateState — odejmij skrzynie jeśli tryb skrzyń
+      if (!_useWaga) {
+        final crateSnap = await db.collection(AppConstants.colCrateStates).doc(entry.id).get();
+        if (crateSnap.exists) {
+          final d = crateSnap.data()!;
+          final newDrew  = ((d['drew_remaining']  as num?)?.toInt() ?? 0) - drewZdj;
+          final newPlast = ((d['plast_remaining'] as num?)?.toInt() ?? 0) - plastZdj;
+          batch.update(crateSnap.reference, {
+            'drew_remaining':  newDrew.clamp(0, 9999),
+            'plast_remaining': newPlast.clamp(0, 9999),
+            'active': (newDrew + newPlast) > 0,
+          });
+        }
+      }
+      // Oznacz delivery jako ROZLICZONO jeśli waga zejście = pełna waga
+      final delivKg = entry.kgValue;
+      if (_useWaga && wagaKg >= delivKg * 0.99) {
+        batch.update(db.collection(AppConstants.colDeliveries).doc(entry.id), {'status': 'ROZLICZONO'});
+      }
+      await batch.commit();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.red),
+        );
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ściągnij ze stanów'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Owoc
+          DropdownButtonFormField<String>(
+            decoration: const InputDecoration(labelText: 'Owoc / Surowiec'),
+            value: _owoc,
+            items: _owoce.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+            onChanged: (v) => setState(() { _owoc = v; _lot = null; }),
+          ),
+          const SizedBox(height: 10),
+          // Odmiana (LOT)
+          if (_owoc != null)
+            DropdownButtonFormField<String>(
+              decoration: const InputDecoration(labelText: 'Odmiana / LOT'),
+              value: _lot,
+              items: _odmiany.map((e) => DropdownMenuItem(
+                value: e.id,
+                child: Text('${e.odmiana.isNotEmpty ? e.odmiana : e.owoc}  (${e.wagaNetto} kg)'),
+              )).toList(),
+              onChanged: (v) => setState(() => _lot = v),
+            ),
+          const SizedBox(height: 12),
+          // Tryb: waga vs skrzynie
+          if (_lot != null) ...[
+            Row(children: [
+              Expanded(child: RadioListTile<bool>(
+                title: const Text('Waga [kg]', style: TextStyle(fontSize: 13)),
+                value: true, groupValue: _useWaga,
+                onChanged: (v) => setState(() => _useWaga = v!),
+                contentPadding: EdgeInsets.zero,
+              )),
+              Expanded(child: RadioListTile<bool>(
+                title: const Text('Skrzynie', style: TextStyle(fontSize: 13)),
+                value: false, groupValue: _useWaga,
+                onChanged: (v) => setState(() => _useWaga = v!),
+                contentPadding: EdgeInsets.zero,
+              )),
+            ]),
+            if (_useWaga)
+              TextFormField(
+                controller: _wagaCtrl,
+                decoration: const InputDecoration(labelText: 'Waga zejścia [kg]'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              )
+            else
+              Row(children: [
+                Expanded(child: TextFormField(
+                  controller: _drewCtrl,
+                  decoration: const InputDecoration(labelText: 'Drew.'),
+                  keyboardType: TextInputType.number,
+                )),
+                const SizedBox(width: 12),
+                Expanded(child: TextFormField(
+                  controller: _plastCtrl,
+                  decoration: const InputDecoration(labelText: 'Plast.'),
+                  keyboardType: TextInputType.number,
+                )),
+              ]),
+          ],
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anuluj')),
+        FilledButton(
+          onPressed: (_saving || _lot == null) ? null : _save,
+          child: _saving
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Zapisz zejście'),
+        ),
+      ],
+    );
+  }
 }

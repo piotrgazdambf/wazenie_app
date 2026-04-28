@@ -24,6 +24,8 @@ class PsEntry {
   final String zwrotPct;
   final String wagaNetto;
   final String status;
+  final bool isKwg;
+  final String kwgType;
 
   const PsEntry({
     required this.id,
@@ -41,6 +43,8 @@ class PsEntry {
     required this.zwrotPct,
     required this.wagaNetto,
     required this.status,
+    required this.isKwg,
+    required this.kwgType,
   });
 
   factory PsEntry.fromFirestore(String id, Map<String, dynamic> d) => PsEntry(
@@ -59,6 +63,8 @@ class PsEntry {
     zwrotPct:     d['zwrot_pct'] as String? ?? '',
     wagaNetto:    d['waga_netto'] as String? ?? '',
     status:       d['status'] as String? ?? '',
+    isKwg:        d['is_kwg'] == true,
+    kwgType:      d['kwg_type'] as String? ?? '',
   );
 
   bool get hasParams =>
@@ -88,8 +94,51 @@ class PsScreen extends ConsumerStatefulWidget {
   ConsumerState<PsScreen> createState() => _PsScreenState();
 }
 
-class _PsScreenState extends ConsumerState<PsScreen> {
+class _PsScreenState extends ConsumerState<PsScreen>
+    with SingleTickerProviderStateMixin {
   String _search = '';
+  late TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  List<PsEntry> _filter(List<PsEntry> list, String tab) {
+    switch (tab) {
+      case 'czaplin':  return list.where((e) => !e.isKwg).toList();
+      case 'rylex':    return list.where((e) => e.isKwg && e.kwgType == 'R').toList();
+      case 'grojecka': return list.where((e) => e.isKwg && e.kwgType == 'G').toList();
+      default:         return list;
+    }
+  }
+
+  Widget _buildList(List<PsEntry> items) {
+    if (items.isEmpty) {
+      return const Center(
+        child: Text('Brak wyników', style: TextStyle(color: AppTheme.textSecondary)),
+      );
+    }
+    final grouped = <String, List<PsEntry>>{};
+    for (final e in items) {
+      final key = e.lot.replaceAll(RegExp(r'\d+$'), '');
+      grouped.putIfAbsent(key, () => []);
+      grouped[key]!.add(e);
+    }
+    final keys = grouped.keys.toList();
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+      itemCount: keys.length,
+      itemBuilder: (ctx, i) => _PsGroup(baseLot: keys[i], entries: grouped[keys[i]]!),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,12 +150,23 @@ class _PsScreenState extends ConsumerState<PsScreen> {
         appBar: AppBar(
           title: const Text('PS — Parametry Surowca'),
           leading: BackButton(onPressed: () => context.go('/home')),
+          bottom: TabBar(
+            controller: _tabCtrl,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            isScrollable: true,
+            tabs: const [
+              Tab(text: 'Wszystkie'),
+              Tab(text: 'Czaplin'),
+              Tab(text: 'RYLEX'),
+              Tab(text: 'Grójecka'),
+            ],
+          ),
         ),
         body: Column(
           children: [
             const OfflineBanner(),
-
-            // Pasek wyszukiwania
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: TextField(
@@ -120,13 +180,12 @@ class _PsScreenState extends ConsumerState<PsScreen> {
               ),
             ),
             const SizedBox(height: 6),
-
             Expanded(
               child: psAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => _ErrorView(message: e.toString()),
                 data: (list) {
-                  final filtered = list.where((e) {
+                  final searched = list.where((e) {
                     final q = _search;
                     if (q.isEmpty) return true;
                     return e.lot.toLowerCase().contains(q) ||
@@ -136,17 +195,14 @@ class _PsScreenState extends ConsumerState<PsScreen> {
                         e.owoc.toLowerCase().contains(q);
                   }).toList();
 
-                  if (filtered.isEmpty) {
-                    return const Center(
-                      child: Text('Brak wyników',
-                          style: TextStyle(color: AppTheme.textSecondary)),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
-                    itemCount: filtered.length,
-                    itemBuilder: (ctx, i) => _PsCard(entry: filtered[i]),
+                  return TabBarView(
+                    controller: _tabCtrl,
+                    children: [
+                      _buildList(searched),
+                      _buildList(_filter(searched, 'czaplin')),
+                      _buildList(_filter(searched, 'rylex')),
+                      _buildList(_filter(searched, 'grojecka')),
+                    ],
                   );
                 },
               ),
@@ -156,6 +212,68 @@ class _PsScreenState extends ConsumerState<PsScreen> {
       ),
     );
   }
+}
+
+// ── Grupa dostaw ──────────────────────────────────────────────────────────────
+
+class _PsGroup extends StatefulWidget {
+  final String baseLot;
+  final List<PsEntry> entries;
+  const _PsGroup({required this.baseLot, required this.entries});
+
+  @override
+  State<_PsGroup> createState() => _PsGroupState();
+}
+
+class _PsGroupState extends State<_PsGroup> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final e0 = widget.entries.first;
+    final totalNetto = widget.entries.fold(0.0, (s, e) {
+      return s + (double.tryParse(e.wagaNetto.replaceAll(',', '.')) ?? 0);
+    });
+    final odmiany = widget.entries.map((e) => e.odmiana).where((o) => o.isNotEmpty).toList();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.baseLot,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14,
+                          color: AppTheme.primaryDark, fontFamily: 'monospace')),
+                  const SizedBox(height: 3),
+                  Text('${_cap(e0.owoc)}${odmiany.isNotEmpty ? "  •  ${odmiany.join(" / ")}" : ""}',
+                      style: const TextStyle(fontSize: 13)),
+                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.toStringAsFixed(0)} kg',
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                ])),
+                Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                    color: AppTheme.textSecondary),
+              ]),
+            ),
+          ),
+          if (_expanded)
+            ...widget.entries.map((e) => Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
+              ),
+              child: _PsCard(entry: e),
+            )),
+        ],
+      ),
+    );
+  }
+
+  static String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 // ── Karta parametrów ──────────────────────────────────────────────────────────
