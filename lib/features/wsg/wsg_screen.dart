@@ -73,7 +73,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
     final nr   = _nrDostawyCtrl.text.trim().padLeft(4, '0');
     final kod  = _dostawca?.kod ?? '???';
     final p    = _przeznaczenieKod ?? '?';
-    final pfx  = _isKWG ? 'W' : 'C';
+    final pfx  = _rylex ? 'R' : _grojecka ? 'G' : 'C';
     final year = (_data.year % 100).toString().padLeft(2, '0');
     return '$pfx/$nr/$kod/$year-$p';
   }

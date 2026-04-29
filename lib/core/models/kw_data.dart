@@ -29,9 +29,9 @@ class WsgInputData {
   /// Typ KWG: 'G' dla Grójecka, 'R' dla Rylex, '' dla reszty
   String get kwgType => isGrojecka ? 'G' : (isRylex ? 'R' : '');
 
-  /// LOT bazowy: C/0001/029/26-O (lub W/ dla KWG)
+  /// LOT bazowy: C/0001/029/26-O, R/ dla Rylex, G/ dla Grójecka
   String get lotBase {
-    final prefix = isKWG ? 'W' : 'C';
+    final prefix = isRylex ? 'R' : isGrojecka ? 'G' : 'C';
     final nr = nrDostawy.padLeft(4, '0');
     final year = (data.year % 100).toString().padLeft(2, '0');
     return '$prefix/$nr/$dostawcaKod/$year-$przeznaczenieKod';
