@@ -822,6 +822,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       data:          dateStr,
       dostawca:      '${d.dostawcaKod} — ${d.dostawcaNazwa}',
       nrDostawy:     d.nrDostawy,
+      lot:           d.lotBase,
       nrPojazdu:     _nrPojazduCtrl.text.trim(),
       nrTelefonu:    _nrTelefonuCtrl.text.trim(),
       wagaA1Zal:     _p(_a1ZalCtrl.text),

@@ -109,7 +109,7 @@ class KwPdfData {
     final zwrotPct = p(d['zwrot_pct']?.toString() ?? '0');
 
     return KwPdfData(
-      data:             d['data']             as String? ?? '',
+      data:             _formatDate(d['data'] as String? ?? ''),
       dostawca:         '${d['dostawca_kod'] ?? ''} — ${d['dostawca'] ?? ''}',
       nrDostawy:        d['nr_dostawy']       as String? ?? '',
       lot:              d['lot']              as String? ?? '',
@@ -130,7 +130,9 @@ class KwPdfData {
       mbPlastIl:        (d['mb_plast_il'] is int)  ? d['mb_plast_il'] as int  : pi(d['mb_plast_il']?.toString()  ?? '0'),
       mbPlastWagaJedn:  (d['mb_plast_waga'] is num)? (d['mb_plast_waga'] as num).toDouble(): 10,
       wagaBrutto:       wagaBrutto,
-      wagaNetto:    wagaNetto,
+      wagaNetto:    (d['waga_netto_total'] is num)
+          ? (d['waga_netto_total'] as num).toDouble()
+          : wagaNetto,
       odmiany: [
         KwOdmianaData(
           nazwa:    d['odmiana']  as String? ?? '',
@@ -205,7 +207,7 @@ class KwPdfData {
     }).toList();
 
     return KwPdfData(
-      data:             d0['data']              as String? ?? '',
+      data:             _formatDate(d0['data'] as String? ?? ''),
       dostawca:         '${d0['dostawca_kod'] ?? ''} — ${d0['dostawca'] ?? ''}',
       nrDostawy:        baseLot.isNotEmpty ? baseLot : (d0['nr_dostawy'] as String? ?? ''),
       lot:              baseLot,
@@ -238,6 +240,13 @@ class KwPdfData {
 
   static double _parse(String s)  => double.tryParse(s.replaceAll(',', '.').trim()) ?? 0;
   static int    _parseInt(String s) => int.tryParse(s.trim()) ?? 0;
+
+  /// Konwertuje yyyy-MM-dd → dd.MM.yyyy; inne formaty zwraca bez zmian.
+  static String _formatDate(String s) {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(s);
+    if (m == null) return s;
+    return '${m.group(3)}.${m.group(2)}.${m.group(1)}';
+  }
 }
 
 // ── Generator PDF ─────────────────────────────────────────────────────────────
@@ -281,7 +290,7 @@ class KwPdfGenerator {
     final isSok       = przKod == 'S';
     final isObieranie = przKod == 'O';
     final hasOdpad    = !d.isKwg && d.odmiany.any((o) => o.odpad.isNotEmpty);
-    final hasBrix     = d.odmiany.any((o) => o.brix.isNotEmpty);
+    final hasBrix     = d.isKwg && d.odmiany.any((o) => o.brix.isNotEmpty);
     final hasTward    = (isSok || d.isKwg) && d.odmiany.any((o) => o.twardosc.isNotEmpty);
     final hasKaliber  = isObieranie && d.odmiany.any((o) => o.kaliber.isNotEmpty);
     // KWG: wymagane BRIX + twardość; KW: odpad/tward/kaliber wg przeznaczenia
