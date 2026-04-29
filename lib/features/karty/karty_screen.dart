@@ -732,7 +732,7 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
     if (confirmed != true || !mounted) return;
     final nav = Navigator.of(context);
     await FirebaseFirestore.instance
-        .collection(AppConstants.colKwDocs)
+        .collection(AppConstants.colDeliveries)
         .doc(widget.entry.id)
         .delete();
     if (mounted) nav.pop();
