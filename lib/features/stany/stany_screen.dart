@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../../shared/widgets/crate_icon.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -979,7 +980,7 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.borderLight),
+            CrateIcon(size: 64, color: AppTheme.borderLight),
             SizedBox(height: 12),
             Text('Brak przesłanych dostaw',
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
