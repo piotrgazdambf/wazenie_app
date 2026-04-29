@@ -481,9 +481,30 @@ class _DostawcaLotsSheet extends StatelessWidget {
 class _AkcjeTab extends ConsumerWidget {
   const _AkcjeTab();
 
+  Future<void> _deleteAction(BuildContext context, String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Usuń akcję'),
+        content: const Text('Na pewno usunąć tę akcję? Stany skrzyń nie zostaną automatycznie cofnięte.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Usuń', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await FirebaseFirestore.instance.collection(AppConstants.colCrateActions).doc(id).delete();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(crateActionsProvider);
+    final async   = ref.watch(crateActionsProvider);
+    final isAdmin = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Błąd: $e')),
@@ -561,6 +582,12 @@ class _AkcjeTab extends ConsumerWidget {
                       ),
                     Text(dateStr, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                   ])),
+                  if (isAdmin)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
+                      onPressed: () => _deleteAction(context, a.id),
+                      tooltip: 'Usuń akcję',
+                    ),
                 ]),
               ),
             );
