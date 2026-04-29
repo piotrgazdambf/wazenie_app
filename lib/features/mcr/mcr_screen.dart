@@ -85,9 +85,15 @@ class McrScreen extends ConsumerStatefulWidget {
 class _McrScreenState extends ConsumerState<McrScreen> {
   String _filter = 'all';
   final Set<String> _selected = {};
+  bool _deleteMode = false;
   bool _deleting = false;
 
   bool get _selectionMode => _selected.isNotEmpty;
+
+  void _toggleDeleteMode() => setState(() {
+        _deleteMode = !_deleteMode;
+        _selected.clear();
+      });
 
   void _toggleSelect(String id) =>
       setState(() => _selected.contains(id) ? _selected.remove(id) : _selected.add(id));
@@ -97,7 +103,10 @@ class _McrScreenState extends ConsumerState<McrScreen> {
         ..clear()
         ..addAll(filtered.map((e) => e.id)));
 
-  void _clearSelection() => setState(() => _selected.clear());
+  void _clearSelection() => setState(() {
+        _selected.clear();
+        _deleteMode = false;
+      });
 
   Future<void> _deleteSelected() async {
     final confirmed = await showDialog<bool>(
@@ -148,29 +157,36 @@ class _McrScreenState extends ConsumerState<McrScreen> {
       child: Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
-          title: _selectionMode && isAdmin
-              ? Text('Zaznaczono: ${_selected.length}')
+          title: _deleteMode && isAdmin
+              ? Text(_selectionMode ? 'Zaznaczono: ${_selected.length}' : 'Tryb usuwania')
               : const Text('MCR — Raport Akcji'),
-          leading: _selectionMode && isAdmin
+          leading: _deleteMode && isAdmin
               ? IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: _clearSelection,
                 )
               : BackButton(onPressed: () => context.go('/home')),
           actions: [
-            if (isAdmin && _selectionMode) ...[
-              if (_deleting)
-                const Padding(
-                  padding: EdgeInsets.all(14),
-                  child: SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                )
-              else
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, color: Colors.white, size: 18),
-                  label: Text('Usuń (${_selected.length})',
-                      style: const TextStyle(color: Colors.white)),
-                  onPressed: _deleteSelected,
+            if (isAdmin) ...[
+              if (_deleteMode) ...[
+                if (_deleting)
+                  const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  )
+                else if (_selectionMode)
+                  TextButton.icon(
+                    icon: const Icon(Icons.delete_outline, color: Colors.white, size: 18),
+                    label: Text('Usuń (${_selected.length})',
+                        style: const TextStyle(color: Colors.white)),
+                    onPressed: _deleteSelected,
+                  ),
+              ] else
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Tryb usuwania',
+                  onPressed: _toggleDeleteMode,
                 ),
             ],
           ],
@@ -219,8 +235,8 @@ class _McrScreenState extends ConsumerState<McrScreen> {
                     children: [
                       if (pending > 0) _PendingBanner(count: pending),
 
-                      // pasek "Zaznacz wszystkie" gdy admin i cokolwiek zaznaczone
-                      if (isAdmin && _selectionMode)
+                      // pasek "Zaznacz wszystkie" gdy admin w trybie usuwania
+                      if (isAdmin && _deleteMode)
                         Container(
                           color: AppTheme.primaryMid.withAlpha(15),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -247,7 +263,7 @@ class _McrScreenState extends ConsumerState<McrScreen> {
                                   final e = filtered[i];
                                   return _McrCard(
                                     entry: e,
-                                    isAdmin: isAdmin,
+                                    isAdmin: isAdmin && _deleteMode,
                                     isSelected: _selected.contains(e.id),
                                     onToggle: () => _toggleSelect(e.id),
                                   );
