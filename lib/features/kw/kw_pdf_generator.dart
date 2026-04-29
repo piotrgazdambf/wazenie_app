@@ -548,14 +548,23 @@ class KwPdfGenerator {
                             pw.Container(padding: pad, color: PdfColors.grey100,
                                 child: pw.SizedBox()),
                           ]),
-                        if (hasBrix && odm.brix.isNotEmpty)
-                          _pRow('1', 'BRIX', odm.brix, pad, sR9, sB9),
-                        if (hasOdpad && odm.odpad.isNotEmpty)
-                          _pRow('2', 'ODPAD w %', odm.odpad, pad, sR9, sB9),
-                        if (hasTward && odm.twardosc.isNotEmpty)
-                          _pRow('3', 'TWARDOŚĆ', odm.twardosc, pad, sR9, sB9),
-                        if (hasKaliber && odm.kaliber.isNotEmpty)
-                          _pRow('4', 'PW (KALIBER I OCZKA W %)', odm.kaliber, pad, sR9, sB9),
+                        ...() {
+                          int nr = 0;
+                          final rows = <pw.TableRow>[];
+                          if (hasBrix && odm.brix.isNotEmpty) {
+                            rows.add(_pRow('${++nr}', 'BRIX', odm.brix, pad, sR9, sB9));
+                          }
+                          if (hasOdpad && odm.odpad.isNotEmpty) {
+                            rows.add(_pRow('${++nr}', 'ODPAD w %', odm.odpad, pad, sR9, sB9));
+                          }
+                          if (hasTward && odm.twardosc.isNotEmpty) {
+                            rows.add(_pRow('${++nr}', 'TWARDOŚĆ', odm.twardosc, pad, sR9, sB9));
+                          }
+                          if (hasKaliber && odm.kaliber.isNotEmpty) {
+                            rows.add(_pRow('${++nr}', 'PW (KALIBER I OCZKA W %)', odm.kaliber, pad, sR9, sB9));
+                          }
+                          return rows;
+                        }(),
                       ],
                     ),
                   ),

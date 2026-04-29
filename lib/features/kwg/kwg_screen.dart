@@ -150,6 +150,8 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'kwg_type':          d.kwgType,
         'data_wsg':          '${d.data.year}-${d.data.month.toString().padLeft(2,'0')}-${d.data.day.toString().padLeft(2,'0')}',
         'status':            'PRZESŁANO',
+        'stan_opakowania':   'DOBRY',
+        'stan_samochodu':    'DOBRY',
         'createdBy':         userId,
         'createdAt':         FieldValue.serverTimestamp(),
       });
