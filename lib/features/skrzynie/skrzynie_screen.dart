@@ -886,7 +886,25 @@ class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
               style: const TextStyle(fontSize: 12, color: AppTheme.primaryDark),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.select_all, size: 16),
+              label: const Text('Wydaj wszystkie'),
+              onPressed: () => setState(() {
+                _drewCtrl.text  = _totalDrew.toString();
+                _plastCtrl.text = _totalPlast.toString();
+              }),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.errorRed,
+                side: const BorderSide(color: AppTheme.errorRed),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                textStyle: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(children: [
             Expanded(child: TextFormField(
               controller: _drewCtrl,
