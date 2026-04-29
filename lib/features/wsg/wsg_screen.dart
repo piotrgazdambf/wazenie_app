@@ -60,10 +60,7 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
 
   String get _owocFinal => (_owoc != null && _isEko) ? '${_owoc!} eko' : (_owoc ?? '');
 
-  bool get _isKWG =>
-      _rylex ||
-      _grojecka ||
-      (_owoc != null && !_owoceDlaKW.contains(_owoc!.toLowerCase()));
+  bool get _isKWG => _rylex || _grojecka;
 
   String get _przeznaczenieNazwa {
     for (final p in _przeznaczenia) {
