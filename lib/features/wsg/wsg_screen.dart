@@ -102,13 +102,16 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
     try {
       final snap = await FirebaseFirestore.instance
           .collection(AppConstants.colDeliveries)
-          .orderBy('nr_dostawy', descending: true)
-          .limit(1)
           .get();
-      if (snap.docs.isEmpty) return 1;
-      final raw = snap.docs.first.data()['nr_dostawy'] as String? ?? '0';
-      final n = int.tryParse(raw.replaceAll(RegExp(r'\D'), '')) ?? 0;
-      return n + 1;
+      int max = 0;
+      for (final doc in snap.docs) {
+        final raw = doc.data()['nr_dostawy'] as String? ?? '';
+        // ignoruj LOT-y (zawierają '/') - bierz tylko czyste liczby
+        if (raw.contains('/')) continue;
+        final n = int.tryParse(raw.trim()) ?? 0;
+        if (n > max) max = n;
+      }
+      return max + 1;
     } catch (_) {
       return 1;
     }
