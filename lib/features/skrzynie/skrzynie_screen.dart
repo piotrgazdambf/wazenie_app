@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../../shared/widgets/crate_icon.dart';
 
 // ── Model CrateState ─────────────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ class _StanyTab extends ConsumerWidget {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(children: [
-                const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 16),
+                const CrateIcon(size: 16, color: Colors.white70),
                 const SizedBox(width: 8),
                 const Text('STANY SKRZYŃ', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
                 const Spacer(),
@@ -731,7 +732,7 @@ class _EmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.borderLight),
+      CrateIcon(size: 64, color: AppTheme.borderLight),
       SizedBox(height: 12),
       Text('Brak aktywnych skrzyń', style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
     ]),

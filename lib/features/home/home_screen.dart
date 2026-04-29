@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../../shared/widgets/crate_icon.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -73,7 +74,7 @@ class HomeScreen extends ConsumerWidget {
                     onTap: () => context.go('/stany'),
                   ),
                   _ModuleCard(
-                    icon: Icons.move_to_inbox_outlined,
+                    customIcon: const CrateIcon(size: 26, color: Color(0xFF0891B2)),
                     title: 'Skrzynie',
                     subtitle: 'Stan skrzyń i przelicznik kg',
                     color: const Color(0xFF0891B2),
@@ -220,14 +221,16 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _ModuleCard extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customIcon;
   final String title;
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
 
   const _ModuleCard({
-    required this.icon,
+    this.icon,
+    this.customIcon,
     required this.title,
     required this.subtitle,
     required this.color,
@@ -252,7 +255,9 @@ class _ModuleCard extends StatelessWidget {
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: color, size: 24),
+                child: Center(
+                  child: customIcon ?? Icon(icon, color: color, size: 24),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
