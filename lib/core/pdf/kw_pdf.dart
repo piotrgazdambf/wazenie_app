@@ -544,7 +544,7 @@ String _intStr(dynamic v) {
 
 String _dblStr(dynamic v) {
   if (v == null) return '';
-  if (v is double) return v == 0 ? '' : v.toStringAsFixed(2);
+  if (v is double) return v == 0 ? '' : v.round().toString();
   if (v is int) return v == 0 ? '' : v.toString();
   final s = v.toString();
   return s == '0' || s == '0.0' ? '' : s;

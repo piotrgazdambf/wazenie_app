@@ -680,7 +680,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
             ),
             child: Text(
               'Stan: ${s.drewRemaining}D + ${s.plastRemaining}P\n'
-              '~${s.kgPerCrate.toStringAsFixed(1)} kg/skrzynię',
+              '~${s.kgPerCrate.round()} kg/skrzynię',
               style: const TextStyle(fontSize: 12, color: AppTheme.primaryDark),
             ),
           ),
@@ -731,7 +731,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
               ),
               child: Column(children: [
                 _Row2('Skrzynie', '${_drewN}D + ${_plastN}P'),
-                _Row2('Kg do odjęcia', '−${_kgDoZdjecia.toStringAsFixed(2)} kg'),
+                _Row2('Kg do odjęcia', '−${_kgDoZdjecia.round()} kg'),
                 if (!_valid) const Text('Przekroczono dostępną liczbę!',
                     style: TextStyle(color: AppTheme.errorRed, fontSize: 12)),
               ]),

@@ -14,6 +14,7 @@ Future<void> showWpisWageDialog(
   required int plastIl,
   double drewWagaJedn = 20,
   double plastWagaJedn = 10,
+  bool showDateField = false,
 }) async {
   await showDialog<void>(
     context: context,
@@ -21,6 +22,7 @@ Future<void> showWpisWageDialog(
       lot: lot, docId: docId,
       drewIl: drewIl, plastIl: plastIl,
       drewWagaJedn: drewWagaJedn, plastWagaJedn: plastWagaJedn,
+      showDateField: showDateField,
     ),
   );
 }
@@ -34,11 +36,13 @@ class _WpisDialog extends StatefulWidget {
   final int plastIl;
   final double drewWagaJedn;
   final double plastWagaJedn;
+  final bool showDateField;
 
   const _WpisDialog({
     required this.lot, required this.docId,
     required this.drewIl, required this.plastIl,
     required this.drewWagaJedn, required this.plastWagaJedn,
+    this.showDateField = false,
   });
 
   @override
@@ -47,6 +51,7 @@ class _WpisDialog extends StatefulWidget {
 
 class _WpisDialogState extends State<_WpisDialog> {
   final _ctrl = TextEditingController();
+  DateTime? _dataDostarczenia;
   bool _saving = false;
 
   @override
@@ -56,10 +61,16 @@ class _WpisDialogState extends State<_WpisDialog> {
     final val = _ctrl.text.trim();
     if (val.isEmpty) return;
     setState(() => _saving = true);
+    final Map<String, dynamic> update = {'waga_netto': val, 'waga_netto_brak': false};
+    if (_dataDostarczenia != null) {
+      final d = _dataDostarczenia!;
+      update['data'] = '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+      update['data_dostarczenia_brak'] = false;
+    }
     await FirebaseFirestore.instance
         .collection(AppConstants.colDeliveries)
         .doc(widget.docId)
-        .update({'waga_netto': val, 'waga_netto_brak': false});
+        .update(update);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -85,6 +96,36 @@ class _WpisDialogState extends State<_WpisDialog> {
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
             onFieldSubmitted: (_) => _save(),
           ),
+          if (widget.showDateField) ...[
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _dataDostarczenia ?? DateTime.now(),
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (picked != null) setState(() => _dataDostarczenia = picked);
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Data dostarczenia (opcjonalna)',
+                  prefixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+                ),
+                child: Text(
+                  _dataDostarczenia != null
+                      ? '${_dataDostarczenia!.day.toString().padLeft(2,'0')}.${_dataDostarczenia!.month.toString().padLeft(2,'0')}.${_dataDostarczenia!.year}'
+                      : '— nie wybrano —',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _dataDostarczenia != null ? null : AppTheme.textSecondary,
+                    fontStyle: _dataDostarczenia != null ? null : FontStyle.italic,
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           // Opcja kalkulatora
           GestureDetector(
@@ -201,8 +242,8 @@ class _KalkulatorDialogState extends State<_KalkulatorDialog> {
         'waga_netto_brak': false,
         if (_p(_zalCtrl.text) > 0) 'waga_a1_zal': _p(_zalCtrl.text),
         if (_p(_rozCtrl.text) > 0) 'waga_a1_roz': _p(_rozCtrl.text),
-        if (_p(_drewWagaCtrl.text) > 0) 'drew_waga_jedn': _p(_drewWagaCtrl.text),
-        if (_p(_plastWagaCtrl.text) > 0) 'plast_waga_jedn': _p(_plastWagaCtrl.text),
+        if (_p(_drewWagaCtrl.text) > 0) ...{'drew_waga_jedn': _p(_drewWagaCtrl.text), 'drew_waga_set': true},
+        if (_p(_plastWagaCtrl.text) > 0) ...{'plast_waga_jedn': _p(_plastWagaCtrl.text), 'plast_waga_set': true},
       });
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

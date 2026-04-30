@@ -122,17 +122,15 @@ class KwPdfData {
       wagaA2Zal:    a2z,
       wagaA2Roz:    a2r,
       drewIl:           drewIl,
-      drewWagaJedn:     (d['drew_waga_jedn']   is num) ? (d['drew_waga_jedn']   as num).toDouble() : 20,
+      drewWagaJedn:     (d['drew_waga_set'] == true && d['drew_waga_jedn']  is num) ? (d['drew_waga_jedn']  as num).toDouble() : 0,
       plastIl:          plastIl,
-      plastWagaJedn:    (d['plast_waga_jedn']  is num) ? (d['plast_waga_jedn']  as num).toDouble() : 10,
+      plastWagaJedn:    (d['plast_waga_set'] == true && d['plast_waga_jedn'] is num) ? (d['plast_waga_jedn'] as num).toDouble() : 0,
       mbDrewIl:         (d['mb_drew_il']  is int)  ? d['mb_drew_il']  as int  : pi(d['mb_drew_il']?.toString()  ?? '0'),
       mbDrewWagaJedn:   (d['mb_drew_waga'] is num) ? (d['mb_drew_waga'] as num).toDouble() : 20,
       mbPlastIl:        (d['mb_plast_il'] is int)  ? d['mb_plast_il'] as int  : pi(d['mb_plast_il']?.toString()  ?? '0'),
       mbPlastWagaJedn:  (d['mb_plast_waga'] is num)? (d['mb_plast_waga'] as num).toDouble(): 10,
       wagaBrutto:       wagaBrutto,
-      wagaNetto:    (d['waga_netto_total'] is num)
-          ? (d['waga_netto_total'] as num).toDouble()
-          : wagaNetto,
+      wagaNetto:    _parseNettoTotal(d['waga_netto_total'], wagaNetto),
       odmiany: [
         KwOdmianaData(
           nazwa:    d['odmiana']  as String? ?? '',
@@ -220,17 +218,15 @@ class KwPdfData {
       wagaA2Zal:  a2z,
       wagaA2Roz:  a2r,
       drewIl:         totalDrew,
-      drewWagaJedn:   (d0['drew_waga_jedn']   is num) ? (d0['drew_waga_jedn']   as num).toDouble() : 20,
+      drewWagaJedn:   (d0['drew_waga_set'] == true && d0['drew_waga_jedn']  is num) ? (d0['drew_waga_jedn']  as num).toDouble() : 0,
       plastIl:        totalPlast,
-      plastWagaJedn:  (d0['plast_waga_jedn']  is num) ? (d0['plast_waga_jedn']  as num).toDouble() : 10,
+      plastWagaJedn:  (d0['plast_waga_set'] == true && d0['plast_waga_jedn'] is num) ? (d0['plast_waga_jedn'] as num).toDouble() : 0,
       mbDrewIl:       (d0['mb_drew_il']   is int)  ? d0['mb_drew_il']   as int  : pi(d0['mb_drew_il']?.toString()   ?? '0'),
       mbDrewWagaJedn: (d0['mb_drew_waga'] is num)  ? (d0['mb_drew_waga'] as num).toDouble() : 20,
       mbPlastIl:      (d0['mb_plast_il']  is int)  ? d0['mb_plast_il']  as int  : pi(d0['mb_plast_il']?.toString()  ?? '0'),
       mbPlastWagaJedn:(d0['mb_plast_waga'] is num) ? (d0['mb_plast_waga'] as num).toDouble() : 10,
       wagaBrutto:  wagaBrutto,
-      wagaNetto:   (d0['waga_netto_total'] is num)
-          ? (d0['waga_netto_total'] as num).toDouble()
-          : totalNetto,
+      wagaNetto:   _parseNettoTotal(d0['waga_netto_total'], totalNetto),
       odmiany:     odmiany,
       stanOpak: d0['stan_opakowania'] as String? ?? '',
       stanAuto: d0['stan_samochodu']  as String? ?? '',
@@ -240,6 +236,15 @@ class KwPdfData {
 
   static double _parse(String s)  => double.tryParse(s.replaceAll(',', '.').trim()) ?? 0;
   static int    _parseInt(String s) => int.tryParse(s.trim()) ?? 0;
+
+  static double _parseNettoTotal(dynamic v, double fallback) {
+    if (v is num) return v.toDouble();
+    if (v is String && v.isNotEmpty) {
+      final parsed = double.tryParse(v.replaceAll(',', '.'));
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return fallback;
+  }
 
   /// Konwertuje yyyy-MM-dd → dd.MM.yyyy; inne formaty zwraca bez zmian.
   static String _formatDate(String s) {
@@ -289,10 +294,11 @@ class KwPdfGenerator {
     final przKod      = d.przeznaczenieKod.toUpperCase();
     final isSok       = przKod == 'S';
     final isObieranie = przKod == 'O';
+    final isCzaplin   = !d.isKwg;
     final hasOdpad    = !d.isKwg && d.odmiany.any((o) => o.odpad.isNotEmpty);
     final hasBrix     = d.isKwg && d.odmiany.any((o) => o.brix.isNotEmpty);
     final hasTward    = (isSok || d.isKwg) && d.odmiany.any((o) => o.twardosc.isNotEmpty);
-    final hasKaliber  = isObieranie && d.odmiany.any((o) => o.kaliber.isNotEmpty);
+    final hasKaliber  = isObieranie && isCzaplin && d.odmiany.any((o) => o.kaliber.isNotEmpty);
     // KWG: wymagane BRIX + twardość; KW: odpad/tward/kaliber wg przeznaczenia
     final hasParams   = d.isKwg
         ? (hasBrix && hasTward)
@@ -580,7 +586,7 @@ class KwPdfGenerator {
                   pw.SizedBox(width: 8),
                   pw.Expanded(
                     flex: 5,
-                    child: _buildCalcBox(d, odm, isObieranie, pad, sR8, sB8, sR9, sB9),
+                    child: _buildCalcBox(d, odm, isObieranie && isCzaplin, pad, sR8, sB8, sR9, sB9),
                   ),
                 ],
               ),
@@ -672,11 +678,12 @@ class KwPdfGenerator {
   ) {
     if (odm == null) return pw.SizedBox();
 
-    final wN      = odm.wagaNetto > 0 ? odm.wagaNetto : d.wagaNetto;
+    final wNTotal = d.wagaNetto;   // brutto − tara (przed odpadem)
     final odpadV  = double.tryParse(odm.odpad.replaceAll(',',   '.')) ?? 0;
     final kalibV  = double.tryParse(odm.kaliber.replaceAll(',', '.')) ?? 0;
 
-    final doRozliczenia   = wN * (1 - odpadV / 100);
+    // doRozliczenia = waga po odpadzie (już obliczona w Firestore jako waga_netto)
+    final doRozliczenia   = odm.wagaNetto > 0 ? odm.wagaNetto : wNTotal * (1 - odpadV / 100);
     final wCenieZakupu    = doRozliczenia * (1 - kalibV / 100);
     final wCenieObnizOnej = doRozliczenia - wCenieZakupu;
 
@@ -697,22 +704,22 @@ class KwPdfGenerator {
             padding: pad, color: PdfColors.grey200,
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               pw.Text('Waga netto:', style: sR8),
-              pw.Text('${wN.toStringAsFixed(0)} kg', style: sB9),
+              pw.Text('${wNTotal.round()} kg', style: sB9),
             ]),
           ),
         ]),
         pw.TableRow(children: [
           pw.Container(padding: pad, child: pw.Text('Do rozliczenia z dostawcą:', style: sR9)),
-          pw.Container(padding: pad, child: pw.Text('${doRozliczenia.toStringAsFixed(0)} kg', style: sB9)),
+          pw.Container(padding: pad, child: pw.Text('${doRozliczenia.round()} kg', style: sB9)),
         ]),
         if (isObieranie) ...[
           pw.TableRow(children: [
             pw.Container(padding: pad, child: pw.Text('W cenie zakupu:', style: sR9)),
-            pw.Container(padding: pad, child: pw.Text('${wCenieZakupu.toStringAsFixed(0)} kg', style: sB9)),
+            pw.Container(padding: pad, child: pw.Text('${wCenieZakupu.round()} kg', style: sB9)),
           ]),
           pw.TableRow(children: [
             pw.Container(padding: pad, child: pw.Text('W cenie obniżonej:', style: sR9)),
-            pw.Container(padding: pad, child: pw.Text('${wCenieObnizOnej.toStringAsFixed(0)} kg', style: sB9)),
+            pw.Container(padding: pad, child: pw.Text('${wCenieObnizOnej.round()} kg', style: sB9)),
           ]),
         ],
       ],

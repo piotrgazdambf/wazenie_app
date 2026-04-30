@@ -452,7 +452,7 @@ class _McrCard extends StatelessWidget {
               ),
 
               if (entry.wagaNetto.isNotEmpty)
-                Text('${entry.wagaNetto} kg',
+                Text('${(double.tryParse(entry.wagaNetto.replaceAll(',', '.'))?.round() ?? entry.wagaNetto)} kg',
                     style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,

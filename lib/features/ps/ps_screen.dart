@@ -6,6 +6,13 @@ import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
 
+String _fmtKg(String s) {
+  if (s.isEmpty) return s;
+  final v = double.tryParse(s.replaceAll(',', '.'));
+  if (v == null) return s;
+  return v.round().toString();
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 class PsEntry {
@@ -253,7 +260,7 @@ class _PsGroupState extends State<_PsGroup> {
                   const SizedBox(height: 3),
                   Text('${_cap(e0.owoc)}${odmiany.isNotEmpty ? "  •  ${odmiany.join(" / ")}" : ""}',
                       style: const TextStyle(fontSize: 13)),
-                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.toStringAsFixed(0)} kg',
+                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.round()} kg',
                       style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                 ])),
                 Icon(_expanded ? Icons.expand_less : Icons.expand_more,
@@ -331,7 +338,7 @@ class _PsCard extends StatelessWidget {
           // Waga
           if (entry.wagaNetto.isNotEmpty) ...[
             const SizedBox(height: 4),
-            _InfoLine(Icons.scale_outlined, '${entry.wagaNetto} kg netto'),
+            _InfoLine(Icons.scale_outlined, '${_fmtKg(entry.wagaNetto)} kg netto'),
           ],
 
           // Parametry jakości

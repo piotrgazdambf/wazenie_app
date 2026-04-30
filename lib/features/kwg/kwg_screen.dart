@@ -26,16 +26,20 @@ class _OdmGCtrl {
   final odpadCtrl     = TextEditingController();
   final twardCtrl     = TextEditingController();
   final infoCtrl      = TextEditingController();
+  final drewWagaCtrl  = TextEditingController();
+  final plastWagaCtrl = TextEditingController();
   // Dla Rylex/Grójecka: indywidualny nr dostawy i data
   final nrCtrl        = TextEditingController();
   DateTime dataDostawy = DateTime.now();
+  bool dataBrak       = false;
   bool zwrotVisible   = false;
   bool mbVisible      = false;
 
   void dispose() {
     for (final c in [nazwaCtrl, wagaNettoCtrl, drewCtrl, plastCtrl,
                      mbDrewCtrl, mbPlastCtrl, zwrotCtrl, brixCtrl,
-                     odpadCtrl, twardCtrl, infoCtrl, nrCtrl]) {
+                     odpadCtrl, twardCtrl, infoCtrl, nrCtrl,
+                     drewWagaCtrl, plastWagaCtrl]) {
       c.dispose();
     }
   }
@@ -97,8 +101,9 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
 
     setState(() => _saving = true);
 
-    final session = ref.read(currentSessionProvider);
-    final userId  = session?.user.id ?? 'unknown';
+    final session  = ref.read(currentSessionProvider);
+    final userId   = session?.user.id   ?? 'unknown';
+    final userName = session?.user.name ?? '';
     final d       = widget.data;
     final db      = FirebaseFirestore.instance;
     final batch   = db.batch();
@@ -116,12 +121,16 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
       final wagaNetto = double.tryParse(o.wagaNettoCtrl.text.replaceAll(',', '.').trim()) ?? 0;
       final skrz   = '${o.drewCtrl.text.trim()}/${o.plastCtrl.text.trim()}';
 
-      // Data: dla RG - indywidualna data odmiany, dla innych - data z WSG
+      // Data: dla RG - indywidualna data odmiany (lub BRAK), dla innych - data z WSG
       final dataOdm = isRG ? o.dataDostawy : d.data;
-      final dateStr = '${dataOdm.year}-${dataOdm.month.toString().padLeft(2,'0')}-${dataOdm.day.toString().padLeft(2,'0')}';
-      final drewCnt  = int.tryParse(o.drewCtrl.text.trim()) ?? 0;
-      final plastCnt = int.tryParse(o.plastCtrl.text.trim()) ?? 0;
-      final mbDrewCnt= int.tryParse(o.mbDrewCtrl.text.trim()) ?? 0;
+      final dateStr = (isRG && o.dataBrak)
+          ? ''
+          : '${dataOdm.year}-${dataOdm.month.toString().padLeft(2,'0')}-${dataOdm.day.toString().padLeft(2,'0')}';
+      final drewCnt       = int.tryParse(o.drewCtrl.text.trim()) ?? 0;
+      final plastCnt      = int.tryParse(o.plastCtrl.text.trim()) ?? 0;
+      final mbDrewCnt     = int.tryParse(o.mbDrewCtrl.text.trim()) ?? 0;
+      final drewWagaJedn  = double.tryParse(o.drewWagaCtrl.text.replaceAll(',', '.').trim());
+      final plastWagaJedn = double.tryParse(o.plastWagaCtrl.text.replaceAll(',', '.').trim());
 
       final delRef = db.collection(AppConstants.colDeliveries).doc(docId);
       batch.set(delRef, {
@@ -141,7 +150,8 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'skrzynie_mb_drew':  mbDrewCnt,
         'skrzynie_mb_plast': int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0,
         'waga_netto':        wagaNetto > 0 ? wagaNetto.toStringAsFixed(2) : '',
-        'waga_netto_brak':   wagaNetto == 0 && isRG, // flaga "waga do uzupełnienia"
+        'waga_netto_brak':         wagaNetto == 0 && isRG,
+        'data_dostarczenia_brak': isRG && o.dataBrak,
         'brix':              o.brixCtrl.text.trim(),
         'odpad':             isRG ? '' : o.odpadCtrl.text.trim(),
         'twardosc':          o.twardCtrl.text.trim(),
@@ -153,6 +163,10 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'stan_opakowania':   'DOBRY',
         'stan_samochodu':    'DOBRY',
         'createdBy':         userId,
+        'createdByName':     userName,
+        if (mbDrewCnt > 0) ...{'drew_waga_jedn': 60.0,  'drew_waga_set': true}
+        else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+        if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
         'createdAt':         FieldValue.serverTimestamp(),
       });
 
@@ -171,8 +185,9 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'plast_total':     plastCnt,
         'drew_remaining':  drewCnt,
         'plast_remaining': plastCnt,
-        'drew_waga_jedn':  mbDrewCnt > 0 ? 60.0 : 20.0,  // MB drew = 60kg
-        'plast_waga_jedn': 10.0,
+        if (mbDrewCnt > 0) ...{'drew_waga_jedn': 60.0,  'drew_waga_set': true}
+        else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+        if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
         'kg_total':        wagaNetto,
         'kg_remaining':    wagaNetto,
         'active':          (drewCnt + plastCnt) > 0,
@@ -376,24 +391,45 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
               const SizedBox(width: 8),
               Expanded(
                 flex: 1,
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: o.dataDostawy,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                      locale: const Locale('pl'),
-                    );
-                    if (picked != null) setState(() => o.dataDostawy = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Data dostarczenia'),
-                    child: Text(
-                      '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}',
-                      style: const TextStyle(fontSize: 13),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkWell(
+                      onTap: o.dataBrak ? null : () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: o.dataDostawy,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          locale: const Locale('pl'),
+                        );
+                        if (picked != null) setState(() => o.dataDostawy = picked);
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(labelText: 'Data dostarczenia'),
+                        child: Text(
+                          o.dataBrak
+                              ? 'BRAK'
+                              : '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: o.dataBrak ? AppTheme.textSecondary : null,
+                            fontStyle: o.dataBrak ? FontStyle.italic : null,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    GestureDetector(
+                      onTap: () => setState(() => o.dataBrak = !o.dataBrak),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 3, left: 4),
+                        child: Text(
+                          o.dataBrak ? 'Wpisz datę' : 'Brak daty',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.primaryMid),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ]),
@@ -415,6 +451,12 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
             Expanded(child: _KwgNumField('Skrzynie drew.', o.drewCtrl)),
             const SizedBox(width: 8),
             Expanded(child: _KwgNumField('Skrzynie plast.', o.plastCtrl)),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            Expanded(child: _KwgNumField('Waga skrzyni drew. [kg]', o.drewWagaCtrl)),
+            const SizedBox(width: 8),
+            Expanded(child: _KwgNumField('Waga skrzyni plast. [kg]', o.plastWagaCtrl)),
           ]),
           const SizedBox(height: 8),
           GestureDetector(
@@ -504,7 +546,7 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
       final lot = isRG
           ? _lotForOdmRG(o)
           : (total <= 1 || i == 0 ? lotBase : '$lotBase${i + 1}');
-      final dataDostarczenia = isRG
+      final dataDostarczenia = (isRG && !o.dataBrak)
           ? '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}'
           : '';
       return KwLabelData(

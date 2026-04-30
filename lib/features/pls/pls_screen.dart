@@ -10,6 +10,13 @@ import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/wpisz_wage_dialog.dart';
 
+String _fmtKg(String s) {
+  if (s.isEmpty) return s;
+  final v = double.tryParse(s.replaceAll(',', '.'));
+  if (v == null) return s;
+  return v.round().toString();
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 class PlsEntry {
@@ -35,6 +42,8 @@ class PlsEntry {
   final String zwrotPct;
   final String stanOpak;
   final String stanAuto;
+  final String createdByName;
+  final List<Map<String, String>> modifications;
 
   const PlsEntry({
     required this.id,
@@ -59,6 +68,8 @@ class PlsEntry {
     this.zwrotPct = '',
     this.stanOpak = '',
     this.stanAuto = '',
+    this.createdByName = '',
+    this.modifications = const [],
   });
 
   factory PlsEntry.fromFirestore(String id, Map<String, dynamic> d) => PlsEntry(
@@ -84,8 +95,13 @@ class PlsEntry {
         twardosc:     d['twardosc'] as String? ?? '',
         kaliber:      d['kaliber'] as String? ?? '',
         zwrotPct:     d['zwrot_pct'] as String? ?? '',
-        stanOpak:     d['stan_opakowania'] as String? ?? '',
-        stanAuto:     d['stan_samochodu'] as String? ?? '',
+        stanOpak:      d['stan_opakowania'] as String? ?? '',
+        stanAuto:      d['stan_samochodu']  as String? ?? '',
+        createdByName: d['createdByName']   as String? ?? '',
+        modifications: (d['modifications']  as List<dynamic>?)
+            ?.map((e) => Map<String, String>.from(
+                (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList() ?? const [],
       );
 }
 
@@ -258,7 +274,7 @@ class _PlsGroupState extends State<_PlsGroup> {
                   const SizedBox(height: 3),
                   Text('${e0.owoc}${odmiany.isNotEmpty ? "  •  ${odmiany.join(" / ")}" : ""}',
                       style: const TextStyle(fontSize: 13)),
-                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.toStringAsFixed(0)} kg  •  ${widget.entries.length} odm.',
+                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.round()} kg  •  ${widget.entries.length} odm.',
                       style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                 ])),
                 Icon(_expanded ? Icons.expand_less : Icons.expand_more,
@@ -288,7 +304,9 @@ class _PlsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin     = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
+    final session     = ref.watch(currentSessionProvider);
+    final isAdmin     = session?.user.isAdmin ?? false;
+    final userName    = session?.user.name ?? '';
     final statusColor = _statusColor(entry.status);
     final statusLabel = _statusLabel(entry.status);
 
@@ -301,7 +319,7 @@ class _PlsCard extends ConsumerWidget {
           : null,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _showDetail(context, isAdmin: isAdmin),
+        onTap: () => _showDetail(context, isAdmin: isAdmin, userName: userName),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -345,8 +363,8 @@ class _PlsCard extends ConsumerWidget {
                 Icons.inventory_2_outlined,
                 [
                   if (entry.skrzynie.isNotEmpty) 'Skrz: ${entry.skrzynie}',
-                  if (entry.wagaNetto.isNotEmpty) 'Netto: ${entry.wagaNetto} kg',
-                  if (entry.wagaBrutto.isNotEmpty) 'Brutto: ${entry.wagaBrutto} kg',
+                  if (entry.wagaNetto.isNotEmpty) 'Netto: ${_fmtKg(entry.wagaNetto)} kg',
+                  if (entry.wagaBrutto.isNotEmpty) 'Brutto: ${_fmtKg(entry.wagaBrutto)} kg',
                 ].join('   '),
               ),
 
@@ -394,7 +412,7 @@ class _PlsCard extends ConsumerWidget {
     );
   }
 
-  void _showDetail(BuildContext context, {required bool isAdmin}) {
+  void _showDetail(BuildContext context, {required bool isAdmin, String userName = ''}) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -402,7 +420,7 @@ class _PlsCard extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _PlsDetailSheet(entry: entry, isAdmin: isAdmin),
+      builder: (_) => _PlsDetailSheet(entry: entry, isAdmin: isAdmin, userName: userName),
     );
   }
 
@@ -610,7 +628,8 @@ class _InfoRow extends StatelessWidget {
 class _PlsDetailSheet extends StatefulWidget {
   final PlsEntry entry;
   final bool isAdmin;
-  const _PlsDetailSheet({required this.entry, required this.isAdmin});
+  final String userName;
+  const _PlsDetailSheet({required this.entry, required this.isAdmin, this.userName = ''});
 
   @override
   State<_PlsDetailSheet> createState() => _PlsDetailSheetState();
@@ -658,6 +677,8 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    final now = DateTime.now();
+    final nowStr = '${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')}.${now.year} ${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
     final db    = FirebaseFirestore.instance;
     final docId = widget.entry.id;
     try {
@@ -676,6 +697,7 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
         'stan_samochodu':  _stanAutoCtrl.text.trim(),
         'status':          _status,
         'editedAt':        FieldValue.serverTimestamp(),
+        'modifications':   FieldValue.arrayUnion([{'by': widget.userName, 'at': nowStr}]),
       });
       // crateStates — sync wagaNetto i przeznaczenie
       final crateSnap = await db.collection(AppConstants.colCrateStates).doc(docId).get();
@@ -783,10 +805,10 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
             ]),
             const SizedBox(height: 12),
             _DetailSection('WAGI', [
-              if (e.wagaBrutto.isNotEmpty) _DetailRow('Brutto', '${e.wagaBrutto} kg'),
+              if (e.wagaBrutto.isNotEmpty) _DetailRow('Brutto', '${_fmtKg(e.wagaBrutto)} kg'),
               _editing
                   ? _PlsEditRow('Netto', _wagaNettoCtrl, suffix: 'kg')
-                  : _DetailRow('Netto', '${e.wagaNetto} kg', bold: true),
+                  : _DetailRow('Netto', '${_fmtKg(e.wagaNetto)} kg', bold: true),
               if (e.skrzynie.isNotEmpty) _DetailRow('Skrzynie (D/P)', e.skrzynie),
             ]),
             const SizedBox(height: 12),
@@ -811,6 +833,20 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
                   ? _PlsEditRow('Samochód', _stanAutoCtrl)
                   : _DetailRow('Stan samochodu', e.stanAuto.isNotEmpty ? e.stanAuto : '—'),
             ]),
+            if (!_editing && widget.isAdmin &&
+                (e.createdByName.isNotEmpty || e.modifications.isNotEmpty)) ...[
+              const SizedBox(height: 12),
+              _DetailSection('HISTORIA', [
+                if (e.createdByName.isNotEmpty)
+                  _DetailRow('Stworzył', e.createdByName, bold: true),
+                if (e.modifications.isNotEmpty) ...[
+                  const Divider(height: 16),
+                  ...e.modifications.reversed.map((m) =>
+                    _DetailRow(m['at'] ?? '', m['by'] ?? ''),
+                  ),
+                ],
+              ]),
+            ],
             if (_editing && widget.isAdmin) ...[
               const SizedBox(height: 12),
               _DetailSection('STATUS', [
@@ -1003,6 +1039,7 @@ class _WpisWageButton extends StatelessWidget {
         docId: entry.id,
         drewIl: _drewIl,
         plastIl: _plastIl,
+        showDateField: entry.isKwg && entry.data.isEmpty,
       ),
       child: Container(
         width: double.infinity,

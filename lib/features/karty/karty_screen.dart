@@ -41,6 +41,8 @@ class KartaEntry {
   final String stanAuto;
   final String status;
   final bool isKwg;
+  final String createdByName;
+  final List<Map<String, String>> modifications;
 
   const KartaEntry({
     required this.id,
@@ -70,6 +72,8 @@ class KartaEntry {
     required this.isKwg,
     this.kwgType = '',
     this.wagaNettoBrak = false,
+    this.createdByName = '',
+    this.modifications = const [],
   });
 
   factory KartaEntry.fromFirestore(String id, Map<String, dynamic> d) => KartaEntry(
@@ -99,7 +103,12 @@ class KartaEntry {
     status:       d['status'] as String? ?? '',
     isKwg:        d['is_kwg'] as bool? ?? false,
     kwgType:      d['kwg_type'] as String? ?? '',
-    wagaNettoBrak: d['waga_netto_brak'] as bool? ?? false,
+    wagaNettoBrak:  d['waga_netto_brak']  as bool?   ?? false,
+    createdByName:  d['createdByName']    as String? ?? '',
+    modifications:  (d['modifications']   as List<dynamic>?)
+        ?.map((e) => Map<String, String>.from(
+            (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+        .toList() ?? const [],
   );
 }
 
@@ -155,6 +164,7 @@ class _KartyScreenState extends ConsumerState<KartyScreen>
     final kartyAsync = ref.watch(kartyListProvider);
     final session    = ref.watch(currentSessionProvider);
     final isAdmin    = session?.user.isAdmin ?? false;
+    final userName   = session?.user.name ?? '';
 
     return OfflineOverflowGuard(
       child: Scaffold(
@@ -224,6 +234,7 @@ class _KartyScreenState extends ConsumerState<KartyScreen>
                         baseLot: keys[i],
                         entries: grouped[keys[i]]!,
                         isAdmin: isAdmin,
+                        userName: userName,
                       ),
                     );
                   }
@@ -253,7 +264,8 @@ class _DeliveryGroup extends ConsumerStatefulWidget {
   final String baseLot;
   final List<KartaEntry> entries;
   final bool isAdmin;
-  const _DeliveryGroup({required this.baseLot, required this.entries, required this.isAdmin});
+  final String userName;
+  const _DeliveryGroup({required this.baseLot, required this.entries, required this.isAdmin, this.userName = ''});
 
   @override
   ConsumerState<_DeliveryGroup> createState() => _DeliveryGroupState();
@@ -348,7 +360,7 @@ class _DeliveryGroupState extends ConsumerState<_DeliveryGroup> {
               decoration: const BoxDecoration(
                 border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
               ),
-              child: _KartaCard(entry: e, isAdmin: widget.isAdmin, compact: true),
+              child: _KartaCard(entry: e, isAdmin: widget.isAdmin, compact: true, userName: widget.userName),
             )),
         ],
       ),
@@ -359,7 +371,7 @@ class _DeliveryGroupState extends ConsumerState<_DeliveryGroup> {
     showModalBottomSheet<void>(
       context: context, isScrollControlled: true, useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _KartaDetailSheet(entry: e, isAdmin: widget.isAdmin),
+      builder: (_) => _KartaDetailSheet(entry: e, isAdmin: widget.isAdmin, userName: widget.userName),
     );
   }
 
@@ -426,6 +438,7 @@ class _DeliveryGroupState extends ConsumerState<_DeliveryGroup> {
     } catch (_) {}
     return d;
   }
+
 }
 
 // ── Karta w liście ────────────────────────────────────────────────────────────
@@ -434,7 +447,8 @@ class _KartaCard extends ConsumerWidget {
   final KartaEntry entry;
   final bool isAdmin;
   final bool compact;
-  const _KartaCard({required this.entry, required this.isAdmin, this.compact = false});
+  final String userName;
+  const _KartaCard({required this.entry, required this.isAdmin, this.compact = false, this.userName = ''});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -458,7 +472,7 @@ class _KartaCard extends ConsumerWidget {
                 useSafeArea: true,
                 shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-                builder: (_) => _KartaDetailSheet(entry: entry, isAdmin: isAdmin),
+                builder: (_) => _KartaDetailSheet(entry: entry, isAdmin: isAdmin, userName: userName),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,7 +505,7 @@ class _KartaCard extends ConsumerWidget {
                       '${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
                   if (entry.wagaNetto.isNotEmpty)
                     _InfoRow(Icons.scale_outlined,
-                        'Netto: ${entry.wagaNetto} kg  •  Skrz: ${entry.skrzynie}'),
+                        'Netto: ${_fmtKg(entry.wagaNetto)} kg  •  Skrz: ${entry.skrzynie}'),
                 ],
               ),
             ),
@@ -655,10 +669,18 @@ class _KartaCard extends ConsumerWidget {
 
 // ── Detail sheet ──────────────────────────────────────────────────────────────
 
+String _fmtKg(String s) {
+  if (s.isEmpty) return s;
+  final v = double.tryParse(s.replaceAll(',', '.'));
+  if (v == null) return s;
+  return v.round().toString();
+}
+
 class _KartaDetailSheet extends StatefulWidget {
   final KartaEntry entry;
   final bool isAdmin;
-  const _KartaDetailSheet({required this.entry, required this.isAdmin});
+  final String userName;
+  const _KartaDetailSheet({required this.entry, required this.isAdmin, this.userName = ''});
 
   @override
   State<_KartaDetailSheet> createState() => _KartaDetailSheetState();
@@ -740,14 +762,35 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    final now = DateTime.now();
+    final nowStr = '${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')}.${now.year} ${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
     try {
+      final e        = widget.entry;
       final wagaNetto = _wagaNettoCtrl.text.trim();
       final brix      = _brixCtrl.text.trim();
-      final przezn    = widget.entry.przeznaczenie.toLowerCase();
+      final przezn    = e.przeznaczenie.toLowerCase();
       // Flaga "brak wagi" znika gdy waga uzupełniona i BRIX (dla przecieru)
       final brakFlaga = wagaNetto.isEmpty || (przezn == 'przecier' && brix.isEmpty);
       final drew  = int.tryParse(_drewCtrl.text.trim())  ?? 0;
       final plast = int.tryParse(_plastCtrl.text.trim()) ?? 0;
+      final newSkrzynie = '${_drewCtrl.text.trim()}/${_plastCtrl.text.trim()}';
+
+      // Buduj listę zmian
+      final diffs = <String>[];
+      void chk(String label, String oldVal, String newVal) {
+        final o = oldVal.isEmpty ? '—' : oldVal;
+        final n = newVal.isEmpty ? '—' : newVal;
+        if (o != n) diffs.add('$label: $o → $n');
+      }
+      chk('BRIX',     e.brix,     brix);
+      chk('Odpad',    e.odpad,    _odpadCtrl.text.trim());
+      chk('Twardość', e.twardosc, _twardCtrl.text.trim());
+      chk('PW',       e.kaliber,  _kaliberCtrl.text.trim());
+      chk('Zwrot',    e.zwrotPct, _zwrotCtrl.text.trim());
+      chk('Netto',    e.wagaNetto, wagaNetto);
+      chk('Skrz.',    e.skrzynie, newSkrzynie);
+      chk('Status',   e.status,   _status);
+      final changesStr = diffs.join(', ');
 
       await FirebaseFirestore.instance
           .collection(AppConstants.colDeliveries)
@@ -760,10 +803,15 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
         'zwrot_pct':       _zwrotCtrl.text.trim(),
         'waga_netto':      wagaNetto,
         'waga_netto_brak': brakFlaga,
-        'skrzynie':        '${_drewCtrl.text.trim()}/${_plastCtrl.text.trim()}',
+        'skrzynie':        newSkrzynie,
         'skrzynie_drew':   drew,
         'skrzynie_plast':  plast,
         'status':          _status,
+        'modifications':   FieldValue.arrayUnion([{
+          'by': widget.userName,
+          'at': nowStr,
+          if (changesStr.isNotEmpty) 'changes': changesStr,
+        }]),
       });
       if (mounted) {
         setState(() { _editing = false; _saving = false; });
@@ -876,10 +924,10 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
 
                 _Section('WAGI', [
                   if (e.wagaBrutto.isNotEmpty)
-                    _Row('Brutto', '${e.wagaBrutto} kg'),
+                    _Row('Brutto', '${_fmtKg(e.wagaBrutto)} kg'),
                   _editing
                       ? _EditRow('Netto', _wagaNettoCtrl, suffix: 'kg')
-                      : _Row('Netto', '${e.wagaNetto} kg', bold: true),
+                      : _Row('Netto', '${_fmtKg(e.wagaNetto)} kg', bold: true),
                   _editing
                       ? Row(children: [
                           Expanded(child: _EditRow('Skrz. drew.', _drewCtrl, suffix: 'szt')),
@@ -933,6 +981,20 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
                       e.stanAuto.isNotEmpty ? e.stanAuto : '—'),
                 ]),
 
+                if (!_editing && widget.isAdmin &&
+                    (e.createdByName.isNotEmpty || e.modifications.isNotEmpty)) ...[
+                  const SizedBox(height: 12),
+                  _Section('HISTORIA', [
+                    if (e.createdByName.isNotEmpty)
+                      _Row('Stworzył', e.createdByName, bold: true),
+                    if (e.modifications.isNotEmpty) ...[
+                      const Divider(height: 16),
+                      ...e.modifications.reversed.map((m) =>
+                        _Row(m['at'] ?? '', m['by'] ?? ''),
+                      ),
+                    ],
+                  ]),
+                ],
                 if (_editing && widget.isAdmin) ...[
                   const SizedBox(height: 12),
                   _Section('STATUS', [
@@ -1180,6 +1242,7 @@ class _KartaWpisButton extends StatelessWidget {
         docId: entry.id,
         drewIl: _drewIl,
         plastIl: _plastIl,
+        showDateField: entry.isKwg && entry.data.isEmpty,
       ),
       child: Container(
         width: double.infinity,

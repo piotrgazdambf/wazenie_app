@@ -205,9 +205,10 @@ class _KwScreenState extends ConsumerState<KwScreen> {
 
     setState(() => _saving = true);
 
-    final session = ref.read(currentSessionProvider);
-    final userId  = session?.user.id ?? 'unknown';
-    final d       = widget.data;
+    final session  = ref.read(currentSessionProvider);
+    final userId   = session?.user.id ?? 'unknown';
+    final userName = session?.user.name ?? '';
+    final d        = widget.data;
     final niskaTward = _hasNiskaTwardosc();
     final effectivePrzeznaczenie    = niskaTward ? 'Przecier' : d.przeznaczenie;
     final effectivePrzeznaczenieKod = niskaTward ? 'P'        : d.przeznaczenieKod;
@@ -271,6 +272,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         },
         'status':            'PRZESŁANO',
         'createdBy':         userId,
+        'createdByName':     userName,
         'createdAt':         FieldValue.serverTimestamp(),
       });
 
@@ -738,7 +740,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
               return Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  'Odpad: −${odpadKg.toStringAsFixed(1)} kg  →  netto: ${o.wagaNetto.toStringAsFixed(1)} kg',
+                  'Odpad: −${odpadKg.round()} kg  →  netto: ${o.wagaNetto.round()} kg',
                   style: const TextStyle(fontSize: 11, color: AppTheme.warningOrange, fontWeight: FontWeight.w600),
                 ),
               );
@@ -1064,7 +1066,7 @@ class _AutoCalcRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final valStr = value.toStringAsFixed(2);
+    final valStr = value.round().toString();
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
