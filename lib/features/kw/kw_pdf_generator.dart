@@ -204,10 +204,18 @@ class KwPdfData {
       );
     }).toList();
 
+    final isKwg     = d0['is_kwg'] == true;
+    final dataWsg   = d0['data_wsg']   as String? ?? '';
+    final dataOdm   = d0['data']       as String? ?? '';
+    final baseNr    = baseLot.isNotEmpty ? baseLot : (d0['nr_dostawy'] as String? ?? '');
+    final nrDostawy = (isKwg && dataOdm.isNotEmpty)
+        ? '$baseNr - ${_formatDate(dataOdm)}'
+        : baseNr;
+
     return KwPdfData(
-      data:             _formatDate(d0['data'] as String? ?? ''),
+      data:             _formatDate(isKwg ? dataWsg : dataOdm),
       dostawca:         '${d0['dostawca_kod'] ?? ''} — ${d0['dostawca'] ?? ''}',
-      nrDostawy:        baseLot.isNotEmpty ? baseLot : (d0['nr_dostawy'] as String? ?? ''),
+      nrDostawy:        nrDostawy,
       lot:              baseLot,
       przeznaczenieKod: d0['przeznaczenie_kod'] as String? ?? '',
       nrPojazdu:        d0['nr_pojazdu']        as String? ?? '',
