@@ -682,6 +682,26 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
     final db    = FirebaseFirestore.instance;
     final docId = widget.entry.id;
     try {
+      final ent = widget.entry;
+      final diffs = <String>[];
+      void chk(String label, String oldVal, String newVal) {
+        final o = oldVal.isEmpty ? '—' : oldVal;
+        final n = newVal.isEmpty ? '—' : newVal;
+        if (o != n) diffs.add('$label: $o -> $n');
+      }
+      chk('BRIX',      ent.brix,          _brixCtrl.text.trim());
+      chk('Odpad',     ent.odpad,         _odpadCtrl.text.trim());
+      chk('Twardość',  ent.twardosc,      _twardCtrl.text.trim());
+      chk('PW',        ent.kaliber,       _kaliberCtrl.text.trim());
+      chk('Zwrot',     ent.zwrotPct,      _zwrotCtrl.text.trim());
+      chk('Netto',     ent.wagaNetto,     _wagaNettoCtrl.text.trim());
+      chk('Odmiana',   ent.odmiana,       _odmianaCtrl.text.trim());
+      chk('Przezn.',   ent.przeznaczenie, _przeznaczenie);
+      chk('St.opak.',  ent.stanOpak,      _stanOpakCtrl.text.trim());
+      chk('St.auto',   ent.stanAuto,      _stanAutoCtrl.text.trim());
+      chk('Status',    ent.status,        _status);
+      final changesStr = diffs.join(', ');
+
       final batch = db.batch();
       // deliveries
       batch.update(db.collection(AppConstants.colDeliveries).doc(docId), {
@@ -697,7 +717,11 @@ class _PlsDetailSheetState extends State<_PlsDetailSheet> {
         'stan_samochodu':  _stanAutoCtrl.text.trim(),
         'status':          _status,
         'editedAt':        FieldValue.serverTimestamp(),
-        'modifications':   FieldValue.arrayUnion([{'by': widget.userName, 'at': nowStr}]),
+        'modifications':   FieldValue.arrayUnion([{
+          'by': widget.userName,
+          'at': nowStr,
+          if (changesStr.isNotEmpty) 'changes': changesStr,
+        }]),
       });
       // crateStates — sync wagaNetto i przeznaczenie
       final crateSnap = await db.collection(AppConstants.colCrateStates).doc(docId).get();
