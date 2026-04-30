@@ -990,7 +990,11 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
                     if (e.modifications.isNotEmpty) ...[
                       const Divider(height: 16),
                       ...e.modifications.reversed.map((m) =>
-                        _Row(m['at'] ?? '', m['by'] ?? ''),
+                        _ModRow(
+                          at:      m['at']      ?? '',
+                          by:      m['by']      ?? '',
+                          changes: m['changes'] ?? '',
+                        ),
                       ),
                     ],
                   ]),
@@ -1117,6 +1121,34 @@ class _Row extends StatelessWidget {
                     color: bold
                         ? AppTheme.primaryDark
                         : AppTheme.textPrimary)),
+          ),
+        ]),
+      );
+}
+
+class _ModRow extends StatelessWidget {
+  final String at;
+  final String by;
+  final String changes;
+  const _ModRow({required this.at, required this.by, required this.changes});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 140,
+            child: Text(at,
+                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          ),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(by,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+              if (changes.isNotEmpty)
+                Text(changes,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+            ]),
           ),
         ]),
       );
