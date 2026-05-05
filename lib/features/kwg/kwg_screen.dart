@@ -170,13 +170,15 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'createdBy':         userId,
         'createdByName':     userName,
         if (mbDrewCnt > 0) ...{
-          'drew_waga_jedn': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
-          'drew_waga_set': true,
-        } else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+          'mb_drew_il':   mbDrewCnt,
+          'mb_drew_waga': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
+        },
         if ((int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0) > 0) ...{
-          'plast_waga_jedn': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
-          'plast_waga_set': true,
-        } else if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
+          'mb_plast_il':   int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0,
+          'mb_plast_waga': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
+        },
+        if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+        if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
         'createdAt':         FieldValue.serverTimestamp(),
       });
 
@@ -196,13 +198,15 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'drew_remaining':  drewCnt,
         'plast_remaining': plastCnt,
         if (mbDrewCnt > 0) ...{
-          'drew_waga_jedn': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
-          'drew_waga_set': true,
-        } else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+          'mb_drew_il':   mbDrewCnt,
+          'mb_drew_waga': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
+        },
         if ((int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0) > 0) ...{
-          'plast_waga_jedn': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
-          'plast_waga_set': true,
-        } else if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
+          'mb_plast_il':   int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0,
+          'mb_plast_waga': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
+        },
+        if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+        if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
         'kg_total':        wagaNetto,
         'kg_remaining':    wagaNetto,
         'active':          (drewCnt + plastCnt) > 0,
