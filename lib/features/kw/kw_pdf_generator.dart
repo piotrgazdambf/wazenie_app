@@ -122,9 +122,9 @@ class KwPdfData {
       wagaA2Zal:    a2z,
       wagaA2Roz:    a2r,
       drewIl:           drewIl,
-      drewWagaJedn:     (d['drew_waga_set'] == true && d['drew_waga_jedn']  is num) ? (d['drew_waga_jedn']  as num).toDouble() : 0,
+      drewWagaJedn:     (d['drew_waga_jedn']  is num) ? (d['drew_waga_jedn']  as num).toDouble() : 0,
       plastIl:          plastIl,
-      plastWagaJedn:    (d['plast_waga_set'] == true && d['plast_waga_jedn'] is num) ? (d['plast_waga_jedn'] as num).toDouble() : 0,
+      plastWagaJedn:    (d['plast_waga_jedn'] is num) ? (d['plast_waga_jedn'] as num).toDouble() : 0,
       mbDrewIl:         (d['mb_drew_il']  is int)  ? d['mb_drew_il']  as int  : pi(d['mb_drew_il']?.toString()  ?? '0'),
       mbDrewWagaJedn:   (d['mb_drew_waga'] is num) ? (d['mb_drew_waga'] as num).toDouble() : 20,
       mbPlastIl:        (d['mb_plast_il'] is int)  ? d['mb_plast_il'] as int  : pi(d['mb_plast_il']?.toString()  ?? '0'),
@@ -226,9 +226,9 @@ class KwPdfData {
       wagaA2Zal:  a2z,
       wagaA2Roz:  a2r,
       drewIl:         totalDrew,
-      drewWagaJedn:   (d0['drew_waga_set'] == true && d0['drew_waga_jedn']  is num) ? (d0['drew_waga_jedn']  as num).toDouble() : 0,
+      drewWagaJedn:   (d0['drew_waga_jedn']  is num) ? (d0['drew_waga_jedn']  as num).toDouble() : 0,
       plastIl:        totalPlast,
-      plastWagaJedn:  (d0['plast_waga_set'] == true && d0['plast_waga_jedn'] is num) ? (d0['plast_waga_jedn'] as num).toDouble() : 0,
+      plastWagaJedn:  (d0['plast_waga_jedn'] is num) ? (d0['plast_waga_jedn'] as num).toDouble() : 0,
       mbDrewIl:       (d0['mb_drew_il']   is int)  ? d0['mb_drew_il']   as int  : pi(d0['mb_drew_il']?.toString()   ?? '0'),
       mbDrewWagaJedn: (d0['mb_drew_waga'] is num)  ? (d0['mb_drew_waga'] as num).toDouble() : 20,
       mbPlastIl:      (d0['mb_plast_il']  is int)  ? d0['mb_plast_il']  as int  : pi(d0['mb_plast_il']?.toString()  ?? '0'),
@@ -305,7 +305,7 @@ class KwPdfGenerator {
     final isCzaplin   = !d.isKwg;
     final hasOdpad    = !d.isKwg && d.odmiany.any((o) => o.odpad.isNotEmpty);
     final hasBrix     = d.isKwg && d.odmiany.any((o) => o.brix.isNotEmpty);
-    final hasTward    = (isSok || d.isKwg) && d.odmiany.any((o) => o.twardosc.isNotEmpty);
+    final hasTward    = isSok || d.isKwg;
     final hasKaliber  = isObieranie && isCzaplin && d.odmiany.any((o) => o.kaliber.isNotEmpty);
     // KWG: wymagane BRIX + twardość; KW: odpad/tward/kaliber wg przeznaczenia
     final hasParams   = d.isKwg
@@ -580,7 +580,7 @@ class KwPdfGenerator {
                           if (hasOdpad && odm.odpad.isNotEmpty) {
                             rows.add(_pRow('${++nr}', 'ODPAD w %', odm.odpad, pad, sR9, sB9));
                           }
-                          if (hasTward && odm.twardosc.isNotEmpty) {
+                          if (hasTward) {
                             rows.add(_pRow('${++nr}', 'TWARDOŚĆ', odm.twardosc, pad, sR9, sB9));
                           }
                           if (hasKaliber && odm.kaliber.isNotEmpty) {

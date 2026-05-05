@@ -9,6 +9,8 @@ import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../core/models/kw_data.dart';
+import '../../core/services/drive_backup_service.dart';
+import '../wsg/wsg_screen.dart' show wsgResetKeyProvider;
 import 'kw_label_generator.dart';
 import 'kw_pdf_generator.dart';
 
@@ -65,16 +67,16 @@ class _KwScreenState extends ConsumerState<KwScreen> {
 
   // Skrzynie dostawcy
   final _drewIlCtrl  = TextEditingController();
-  final _drewWgCtrl  = TextEditingController(text: '20');
+  final _drewWgCtrl  = TextEditingController();
   final _plastIlCtrl = TextEditingController();
-  final _plastWgCtrl = TextEditingController(text: '10');
+  final _plastWgCtrl = TextEditingController();
 
   // Skrzynie MB (własne MBF)
   bool  _maMbSkrzynie  = false;
   final _mbDrewIlCtrl  = TextEditingController();
-  final _mbDrewWgCtrl  = TextEditingController(text: '20');
+  final _mbDrewWgCtrl  = TextEditingController(text: '60');
   final _mbPlastIlCtrl = TextEditingController();
-  final _mbPlastWgCtrl = TextEditingController(text: '10');
+  final _mbPlastWgCtrl = TextEditingController();
 
   // Wyniki (auto)
   double _brutto    = 0;
@@ -199,6 +201,37 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     if (_netto <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Waga netto musi być > 0')),
+      );
+      return;
+    }
+
+    // Walidacja skrzyń
+    final _drewIl  = _pi(_drewIlCtrl.text);
+    final _plastIl = _pi(_plastIlCtrl.text);
+    if (_drewIl == 0 && _plastIl == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Podaj ilość skrzyń (drewniane lub plastikowe)'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+      return;
+    }
+    if (_drewIl > 0 && _p(_drewWgCtrl.text) == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Podaj wagę skrzyni drewnianej [kg]'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+      return;
+    }
+    if (_plastIl > 0 && _p(_plastWgCtrl.text) == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Podaj wagę skrzyni plastikowej [kg]'),
+          backgroundColor: AppTheme.errorRed,
+        ),
       );
       return;
     }
@@ -369,6 +402,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         onTimeout: () => throw TimeoutException('Przekroczono czas zapisu (20s). Sprawdź połączenie.'),
       );
       if (mounted) {
+        _resetForm();
         await _showSaveDialog(pdfData, labelData);
         // Nawigacja obsługiwana wewnątrz _showSaveDialog
       }
@@ -394,6 +428,68 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     }
   }
 
+  // ── Reset formularza ────────────────────────────────────────────────────────
+
+  void _resetForm() {
+    for (final o in _odm) o.dispose();
+    _odm.clear();
+    final newO = _OdmCtrl();
+    _listenOdm(newO);
+    _odm.add(newO);
+
+    _nrPojazduCtrl.clear();
+    _nrTelefonuCtrl.clear();
+    _a1ZalCtrl.clear();
+    _a1RozCtrl.clear();
+    _a2ZalCtrl.clear();
+    _a2RozCtrl.clear();
+    _drewIlCtrl.clear();
+    _drewWgCtrl.clear();
+    _plastIlCtrl.clear();
+    _plastWgCtrl.clear();
+    _mbDrewIlCtrl.clear();
+    _mbDrewWgCtrl.text = '60';
+    _mbPlastIlCtrl.clear();
+    _mbPlastWgCtrl.clear();
+
+    setState(() {
+      _drugiAut    = false;
+      _maMbSkrzynie = false;
+      _stanOpak    = 'DOBRY';
+      _stanAuto    = 'DOBRY';
+      _brutto      = 0;
+      _taraDrew    = 0;
+      _taraPlast   = 0;
+      _taraMb      = 0;
+      _netto       = 0;
+    });
+  }
+
+  Future<void> _confirmReset() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Odrzuć kartę?'),
+        content: const Text('Wszystkie wpisane dane zostaną usunięte.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Anuluj'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Odrzuć'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      ref.read(wsgResetKeyProvider.notifier).state++;
+      context.go('/wsg/new');
+    }
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
@@ -409,7 +505,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           o.odpadCtrl.text.isNotEmpty ||
           o.drewCtrl.text.isNotEmpty ||
           o.plastCtrl.text.isNotEmpty);
-        if (!hasData) { if (mounted) context.go('/wsg/new'); return; }
+        if (!hasData) { if (mounted) context.pop(); return; }
         final cont = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
@@ -427,7 +523,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             ],
           ),
         );
-        if (cont == false && mounted) context.go('/wsg/new');
+        if (cont == false && mounted) context.pop();
       },
       child: Scaffold(
       backgroundColor: AppTheme.background,
@@ -438,7 +534,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             o.nazwaCtrl.text.isNotEmpty ||
             o.brixCtrl.text.isNotEmpty ||
             o.odpadCtrl.text.isNotEmpty);
-          if (!hasData) { context.go('/wsg/new'); return; }
+          if (!hasData) { context.pop(); return; }
           final cont = await showDialog<bool>(
             context: context,
             builder: (_) => AlertDialog(
@@ -456,7 +552,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
               ],
             ),
           );
-          if (cont == false && mounted) context.go('/wsg/new');
+          if (cont == false && mounted) context.pop();
         }),
       ),
       body: Form(
@@ -495,6 +591,17 @@ class _KwScreenState extends ConsumerState<KwScreen> {
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
                   : const Text('Zapisz kartę ważenia'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : _confirmReset,
+              icon: const Icon(Icons.delete_sweep_outlined, color: AppTheme.errorRed),
+              label: const Text('Odrzuć kartę ważenia',
+                  style: TextStyle(color: AppTheme.errorRed)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppTheme.errorRed),
+                minimumSize: const Size(double.infinity, 44),
+              ),
             ),
             const SizedBox(height: 32),
           ],
@@ -672,10 +779,51 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       child: Column(
         children: [
           if (showOdmiana) ...[
-            TextFormField(
-              controller: o.nazwaCtrl,
-              decoration: const InputDecoration(labelText: 'Nazwa odmiany'),
-              textCapitalization: TextCapitalization.words,
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32).withAlpha(15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF2E7D32), width: 1.5),
+              ),
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8, bottom: 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.eco_outlined, color: Color(0xFF2E7D32), size: 14),
+                        SizedBox(width: 4),
+                        Text(
+                          'NAZWA ODMIANY',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2E7D32),
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextFormField(
+                    controller: o.nazwaCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Wpisz odmianę...',
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 4),
+                    ),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1B5E20),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
           ],
@@ -821,11 +969,12 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     final dateStr =
         '${d.data.day.toString().padLeft(2, '0')}.${d.data.month.toString().padLeft(2, '0')}.${d.data.year}';
     return KwPdfData(
-      data:          dateStr,
-      dostawca:      '${d.dostawcaKod} — ${d.dostawcaNazwa}',
-      nrDostawy:     d.nrDostawy,
-      lot:           d.lotBase,
-      nrPojazdu:     _nrPojazduCtrl.text.trim(),
+      data:             dateStr,
+      dostawca:         '${d.dostawcaKod} — ${d.dostawcaNazwa}',
+      nrDostawy:        d.nrDostawy,
+      lot:              d.lotBase,
+      przeznaczenieKod: d.przeznaczenieKod,
+      nrPojazdu:        _nrPojazduCtrl.text.trim(),
       nrTelefonu:    _nrTelefonuCtrl.text.trim(),
       wagaA1Zal:     _p(_a1ZalCtrl.text),
       wagaA1Roz:     _p(_a1RozCtrl.text),
@@ -916,6 +1065,27 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           name: 'KartaWazenia_${widget.data.nrDostawy}',
           onLayout: (_) => KwPdfGenerator.generate(pdfData),
         );
+        // Backup PDF na Google Drive po wydruku
+        final _now     = DateTime.now();
+        final _d0      = widget.data;
+        final _fname   = DriveBackupService.buildFilename(
+          nrDostawy:    _d0.nrDostawy,
+          dostawcaKod:  _d0.dostawcaKod,
+          dostawcaNazwa: _d0.dostawcaNazwa,
+          dt: _now,
+        );
+        final _month   = DriveBackupService.monthFolder(_now);
+        KwPdfGenerator.generate(pdfData).then((bytes) {
+          DriveBackupService.upload(bytes, _fname, _month);
+        }).catchError((_) {});
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Karta ważenia trafiła do chmury'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
         // Po druku karty KW → idź do PLS
         if (mounted) context.go('/pls');
         return;

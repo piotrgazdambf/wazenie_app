@@ -44,6 +44,8 @@ class PlsEntry {
   final String stanAuto;
   final String createdByName;
   final List<Map<String, String>> modifications;
+  final int mbDrewIl;
+  final int mbPlastIl;
 
   const PlsEntry({
     required this.id,
@@ -70,6 +72,8 @@ class PlsEntry {
     this.stanAuto = '',
     this.createdByName = '',
     this.modifications = const [],
+    this.mbDrewIl = 0,
+    this.mbPlastIl = 0,
   });
 
   factory PlsEntry.fromFirestore(String id, Map<String, dynamic> d) => PlsEntry(
@@ -102,6 +106,8 @@ class PlsEntry {
             ?.map((e) => Map<String, String>.from(
                 (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
             .toList() ?? const [],
+        mbDrewIl:  d['mb_drew_il']  as int? ?? (d['skrzynie_mb_drew']  as int? ?? 0),
+        mbPlastIl: d['mb_plast_il'] as int? ?? (d['skrzynie_mb_plast'] as int? ?? 0),
       );
 }
 
@@ -1063,6 +1069,8 @@ class _WpisWageButton extends StatelessWidget {
         docId: entry.id,
         drewIl: _drewIl,
         plastIl: _plastIl,
+        mbDrewIl: entry.mbDrewIl,
+        mbPlastIl: entry.mbPlastIl,
         showDateField: entry.isKwg && entry.data.isEmpty,
       ),
       child: Container(

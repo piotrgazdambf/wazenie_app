@@ -33,6 +33,8 @@ final owocListProvider = StreamProvider<List<String>>((ref) {
 
 const _owoceDlaKW = {'jabłko', 'gruszka'};
 
+final wsgResetKeyProvider = StateProvider<int>((ref) => 0);
+
 // ── WSG Screen ─────────────────────────────────────────────────────────────────
 
 class WsgScreen extends ConsumerStatefulWidget {
@@ -117,6 +119,19 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
     }
   }
 
+  void _clearAllFields() {
+    _nrDostawyCtrl.clear();
+    setState(() {
+      _data             = DateTime.now();
+      _dostawca         = null;
+      _przeznaczenieKod = null;
+      _owoc             = null;
+      _rylex            = false;
+      _grojecka         = false;
+      _isEko            = false;
+    });
+  }
+
   void _proceed() {
     final input = WsgInputData(
       data: _data,
@@ -133,12 +148,16 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
     if (_isKWG) {
       context.go('/kwg/new', extra: input);
     } else {
-      context.go('/kw/new', extra: input);
+      context.push('/kw/new', extra: input);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(wsgResetKeyProvider, (prev, next) {
+      if (prev != null && next != prev) _clearAllFields();
+    });
+
     final suppliersAsync = ref.watch(suppliersProvider);
     final owocyAsync     = ref.watch(owocListProvider);
     final df = DateFormat('dd.MM.yyyy');

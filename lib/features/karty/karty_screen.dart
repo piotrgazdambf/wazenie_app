@@ -10,6 +10,7 @@ import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/wpisz_wage_dialog.dart';
 import '../kw/kw_label_generator.dart';
 import '../kw/kw_pdf_generator.dart';
+import '../../core/services/drive_backup_service.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -420,6 +421,27 @@ class _DeliveryGroupState extends ConsumerState<_DeliveryGroup> {
         name: 'KartaWazenia_${widget.entries.first.lot}',
         onLayout: (_) => KwPdfGenerator.generate(pdfData),
       );
+      final e0     = widget.entries.first;
+      final now    = DateTime.now();
+      final suffix = e0.kwgType == 'R' ? 'RYLEX' : (e0.kwgType == 'G' ? 'GRÓJECKA' : '');
+      final fname  = DriveBackupService.buildFilename(
+        nrDostawy:     e0.nrDostawy,
+        dostawcaKod:   e0.dostawcaKod,
+        dostawcaNazwa: e0.dostawca,
+        dt: now,
+        suffix: suffix,
+      );
+      final month     = DriveBackupService.monthFolder(now);
+      final messenger = ScaffoldMessenger.of(context);
+      KwPdfGenerator.generate(pdfData).then((bytes) {
+        DriveBackupService.upload(bytes, fname, month);
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Karta ważenia trafiła do chmury'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }).catchError((_) {});
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

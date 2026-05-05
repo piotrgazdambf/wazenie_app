@@ -11,6 +11,7 @@ import '../../core/constants.dart';
 import '../../core/models/kw_data.dart';
 import '../kw/kw_label_generator.dart';
 import '../kw/kw_pdf_generator.dart';
+import '../wsg/wsg_screen.dart' show wsgResetKeyProvider;
 
 // ── Kontrolery odmiany KWG ────────────────────────────────────────────────────
 
@@ -19,8 +20,10 @@ class _OdmGCtrl {
   final wagaNettoCtrl = TextEditingController();
   final drewCtrl      = TextEditingController();
   final plastCtrl     = TextEditingController();
-  final mbDrewCtrl    = TextEditingController();
-  final mbPlastCtrl   = TextEditingController();
+  final mbDrewCtrl     = TextEditingController();
+  final mbPlastCtrl    = TextEditingController();
+  final mbDrewWagaCtrl = TextEditingController(text: '60');
+  final mbPlastWagaCtrl= TextEditingController(text: '10');
   final zwrotCtrl     = TextEditingController(text: '0');
   final brixCtrl      = TextEditingController();
   final odpadCtrl     = TextEditingController();
@@ -37,9 +40,9 @@ class _OdmGCtrl {
 
   void dispose() {
     for (final c in [nazwaCtrl, wagaNettoCtrl, drewCtrl, plastCtrl,
-                     mbDrewCtrl, mbPlastCtrl, zwrotCtrl, brixCtrl,
-                     odpadCtrl, twardCtrl, infoCtrl, nrCtrl,
-                     drewWagaCtrl, plastWagaCtrl]) {
+                     mbDrewCtrl, mbPlastCtrl, mbDrewWagaCtrl, mbPlastWagaCtrl,
+                     zwrotCtrl, brixCtrl, odpadCtrl, twardCtrl, infoCtrl,
+                     nrCtrl, drewWagaCtrl, plastWagaCtrl]) {
       c.dispose();
     }
   }
@@ -111,6 +114,7 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
     final isRG    = d.kwgType.isNotEmpty; // Rylex lub Grójecka
     final lotBase = _lotBaseCtrl.text.trim().isNotEmpty ? _lotBaseCtrl.text.trim() : d.lotBase;
     final total   = _odm.length;
+    final docIds  = <String>[];
     for (int i = 0; i < total; i++) {
       final o      = _odm[i];
       // LOT: dla RG - indywidualny numer, dla innych - standardowy
@@ -118,6 +122,7 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
           ? _lotForOdmRG(o)
           : (total <= 1 || i == 0 ? lotBase : '$lotBase${i + 1}');
       final docId  = lot.replaceAll('/', '_');
+      docIds.add(docId);
       final wagaNetto = double.tryParse(o.wagaNettoCtrl.text.replaceAll(',', '.').trim()) ?? 0;
       final skrz   = '${o.drewCtrl.text.trim()}/${o.plastCtrl.text.trim()}';
 
@@ -164,9 +169,14 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'stan_samochodu':    'DOBRY',
         'createdBy':         userId,
         'createdByName':     userName,
-        if (mbDrewCnt > 0) ...{'drew_waga_jedn': 60.0,  'drew_waga_set': true}
-        else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
-        if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
+        if (mbDrewCnt > 0) ...{
+          'drew_waga_jedn': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
+          'drew_waga_set': true,
+        } else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+        if ((int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0) > 0) ...{
+          'plast_waga_jedn': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
+          'plast_waga_set': true,
+        } else if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
         'createdAt':         FieldValue.serverTimestamp(),
       });
 
@@ -185,9 +195,14 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'plast_total':     plastCnt,
         'drew_remaining':  drewCnt,
         'plast_remaining': plastCnt,
-        if (mbDrewCnt > 0) ...{'drew_waga_jedn': 60.0,  'drew_waga_set': true}
-        else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
-        if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
+        if (mbDrewCnt > 0) ...{
+          'drew_waga_jedn': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
+          'drew_waga_set': true,
+        } else if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
+        if ((int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0) > 0) ...{
+          'plast_waga_jedn': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
+          'plast_waga_set': true,
+        } else if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
         'kg_total':        wagaNetto,
         'kg_remaining':    wagaNetto,
         'active':          (drewCnt + plastCnt) > 0,
@@ -242,63 +257,117 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
     }
   }
 
+  bool _hasData() => _odm.any((o) =>
+      o.nazwaCtrl.text.isNotEmpty ||
+      o.nrCtrl.text.isNotEmpty ||
+      o.wagaNettoCtrl.text.isNotEmpty ||
+      o.drewCtrl.text.isNotEmpty ||
+      o.plastCtrl.text.isNotEmpty);
+
+  Future<void> _confirmReset() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Odrzuć kartę?'),
+        content: const Text('Wszystkie wpisane dane zostaną usunięte.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Anuluj'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Odrzuć'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      ref.read(wsgResetKeyProvider.notifier).state++;
+      context.go('/wsg/new');
+    }
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final d = widget.data;
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: const Text('Karta Ważenia G'),
-        leading: BackButton(onPressed: () => context.go('/wsg/new')),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _headerCard(d),
-            const SizedBox(height: 12),
-            // Dla innych owoc (nie Rylex/Grójecka): LOT bazowy edytowalny
-            if (d.kwgType.isEmpty) ...[
-              _KwgCard(
-                title: 'LOT bazowy',
-                child: TextFormField(
-                  controller: _lotBaseCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'LOT (edytowalny)',
-                    hintText: 'W/001/2104',
-                    prefixIcon: Icon(Icons.qr_code_outlined, size: 18),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!_hasData()) { if (mounted) context.go('/wsg/new'); return; }
+        await _confirmReset();
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          title: const Text('Karta Ważenia G'),
+          leading: BackButton(onPressed: () async {
+            if (!_hasData()) { context.go('/wsg/new'); return; }
+            await _confirmReset();
+          }),
+        ),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _headerCard(d),
+              const SizedBox(height: 12),
+              // Dla innych owoc (nie Rylex/Grójecka): LOT bazowy edytowalny
+              if (d.kwgType.isEmpty) ...[
+                _KwgCard(
+                  title: 'LOT bazowy',
+                  child: TextFormField(
+                    controller: _lotBaseCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'LOT (edytowalny)',
+                      hintText: 'W/001/2104',
+                      prefixIcon: Icon(Icons.qr_code_outlined, size: 18),
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
                   ),
-                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+              ],
+              _odmiawyHeader(),
+              ..._odm.asMap().entries.map((e) => _odmCard(e.key, e.value)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: OutlinedButton.icon(
+                  onPressed: _addOdmiana,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Dodaj odmianę'),
                 ),
               ),
-              const SizedBox(height: 12),
-            ],
-            _odmiawyHeader(),
-            ..._odm.asMap().entries.map((e) => _odmCard(e.key, e.value)),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: OutlinedButton.icon(
-                onPressed: _addOdmiana,
-                icon: const Icon(Icons.add),
-                label: const Text('Dodaj odmianę'),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _confirmReset,
+                icon: const Icon(Icons.delete_sweep_outlined, color: AppTheme.errorRed),
+                label: const Text('Odrzuć kartę ważenia',
+                    style: TextStyle(color: AppTheme.errorRed)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppTheme.errorRed),
+                  minimumSize: const Size(double.infinity, 44),
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _saving ? null : _submit,
-              child: _saving
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Text('Zapisz kartę KWG'),
-            ),
-            const SizedBox(height: 32),
-          ],
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _saving ? null : _submit,
+                child: _saving
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Text('Zapisz kartę KWG'),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
@@ -381,64 +450,162 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
             Row(children: [
               Expanded(
                 flex: 2,
-                child: TextFormField(
-                  controller: o.nrCtrl,
-                  decoration: const InputDecoration(labelText: 'Nr dostawy'),
-                  style: const TextStyle(fontFamily: 'monospace'),
-                  onChanged: (_) => setState(() {}),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1565C0).withAlpha(18),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF1565C0), width: 1.5),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.tag, color: Color(0xFF1565C0), size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'NR DOSTAWY',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1565C0),
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                      TextFormField(
+                        controller: o.nrCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Wpisz nr dostawy...',
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      onTap: o.dataBrak ? null : () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: o.dataDostawy,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
-                          locale: const Locale('pl'),
-                        );
-                        if (picked != null) setState(() => o.dataDostawy = picked);
-                      },
-                      child: InputDecorator(
-                        decoration: const InputDecoration(labelText: 'Data dostarczenia'),
-                        child: Text(
-                          o.dataBrak
-                              ? 'BRAK'
-                              : '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: o.dataBrak ? AppTheme.textSecondary : null,
-                            fontStyle: o.dataBrak ? FontStyle.italic : null,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE65100).withAlpha(18),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE65100), width: 1.5),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined, color: Color(0xFFE65100), size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'DATA DOSTARCZENIA',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFE65100),
+                              letterSpacing: 1.0,
+                            ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: o.dataBrak ? null : () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: o.dataDostawy,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            locale: const Locale('pl'),
+                          );
+                          if (picked != null) setState(() => o.dataDostawy = picked);
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              o.dataBrak
+                                  ? 'BRAK'
+                                  : '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: o.dataBrak ? AppTheme.textSecondary : null,
+                                fontStyle: o.dataBrak ? FontStyle.italic : null,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => setState(() => o.dataBrak = !o.dataBrak),
+                              child: Text(
+                                o.dataBrak ? 'Wpisz datę' : 'Brak daty',
+                                style: const TextStyle(fontSize: 11, color: AppTheme.primaryMid),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    GestureDetector(
-                      onTap: () => setState(() => o.dataBrak = !o.dataBrak),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 3, left: 4),
-                        child: Text(
-                          o.dataBrak ? 'Wpisz datę' : 'Brak daty',
-                          style: const TextStyle(fontSize: 11, color: AppTheme.primaryMid),
-                        ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Pierwotna data dostarczenia surowca',
+                        style: TextStyle(fontSize: 9, color: AppTheme.textSecondary),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ]),
             const SizedBox(height: 8),
           ],
-          TextFormField(
-            controller: o.nazwaCtrl,
-            decoration: const InputDecoration(labelText: 'Odmiana'),
-            textCapitalization: TextCapitalization.words,
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF2E7D32).withAlpha(18),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF2E7D32), width: 1.5),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2, bottom: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.eco_outlined, color: Color(0xFF2E7D32), size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'NAZWA ODMIANY',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF2E7D32),
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextFormField(
+                  controller: o.nazwaCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Wpisz odmianę...',
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 4),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           _KwgNumField(
@@ -481,7 +648,13 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
             Row(children: [
               Expanded(child: _KwgNumField('Sk. MB drew.', o.mbDrewCtrl)),
               const SizedBox(width: 8),
+              Expanded(child: _KwgNumField('Waga 1 szt. MB drew. [kg]', o.mbDrewWagaCtrl)),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
               Expanded(child: _KwgNumField('Sk. MB plast.', o.mbPlastCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _KwgNumField('Waga 1 szt. MB plast. [kg]', o.mbPlastWagaCtrl)),
             ]),
           ],
           const SizedBox(height: 8),
@@ -530,8 +703,58 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
             ),
             maxLines: 2,
           ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            icon: const Icon(Icons.label, size: 16),
+            label: const Text('Drukuj etykietę'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(double.infinity, 40),
+              backgroundColor: AppTheme.primaryMid,
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            onPressed: () => _drukujEtykieteOdmiany(idx, o),
+          ),
         ],
       ),
+    );
+  }
+
+  Future<void> _drukujEtykieteOdmiany(int idx, _OdmGCtrl o) async {
+    if (isRG && o.nrCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Wpisz nr dostawy przed drukowaniem etykiety'),
+        backgroundColor: AppTheme.errorRed,
+      ));
+      return;
+    }
+    if (o.nazwaCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Wpisz nazwę odmiany przed drukowaniem etykiety'),
+        backgroundColor: AppTheme.errorRed,
+      ));
+      return;
+    }
+    final d       = widget.data;
+    final lotBase = _lotBaseCtrl.text.trim().isNotEmpty ? _lotBaseCtrl.text.trim() : d.lotBase;
+    final lot     = isRG
+        ? _lotForOdmRG(o)
+        : (_odm.length <= 1 || idx == 0 ? lotBase : '$lotBase${idx + 1}');
+    final dateStr = '${d.data.day.toString().padLeft(2,'0')}.${d.data.month.toString().padLeft(2,'0')}.${d.data.year}';
+    final dataDostarczenia = (isRG && !o.dataBrak)
+        ? '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}'
+        : '';
+    final label = KwLabelData(
+      lot:              lot,
+      odmiana:          o.nazwaCtrl.text.trim().isNotEmpty ? o.nazwaCtrl.text.trim() : d.owoc,
+      data:             dateStr,
+      dataDostarczenia: dataDostarczenia,
+      dostawca:         d.dostawcaNazwa,
+      dostawcaKod:      d.dostawcaKod,
+      przeznaczenie:    d.przeznaczenie,
+    );
+    await Printing.layoutPdf(
+      name: 'Etykieta_$lot',
+      onLayout: (_) => KwLabelGenerator.generate([label]),
     );
   }
 

@@ -12,6 +12,8 @@ Future<void> showWpisWageDialog(
   required String docId,
   required int drewIl,
   required int plastIl,
+  int mbDrewIl = 0,
+  int mbPlastIl = 0,
   double drewWagaJedn = 20,
   double plastWagaJedn = 10,
   bool showDateField = false,
@@ -21,6 +23,7 @@ Future<void> showWpisWageDialog(
     builder: (_) => _WpisDialog(
       lot: lot, docId: docId,
       drewIl: drewIl, plastIl: plastIl,
+      mbDrewIl: mbDrewIl, mbPlastIl: mbPlastIl,
       drewWagaJedn: drewWagaJedn, plastWagaJedn: plastWagaJedn,
       showDateField: showDateField,
     ),
@@ -34,6 +37,8 @@ class _WpisDialog extends StatefulWidget {
   final String docId;
   final int drewIl;
   final int plastIl;
+  final int mbDrewIl;
+  final int mbPlastIl;
   final double drewWagaJedn;
   final double plastWagaJedn;
   final bool showDateField;
@@ -41,6 +46,7 @@ class _WpisDialog extends StatefulWidget {
   const _WpisDialog({
     required this.lot, required this.docId,
     required this.drewIl, required this.plastIl,
+    this.mbDrewIl = 0, this.mbPlastIl = 0,
     required this.drewWagaJedn, required this.plastWagaJedn,
     this.showDateField = false,
   });
@@ -136,6 +142,7 @@ class _WpisDialogState extends State<_WpisDialog> {
                 builder: (_) => _KalkulatorDialog(
                   lot: widget.lot, docId: widget.docId,
                   drewIl: widget.drewIl, plastIl: widget.plastIl,
+                  mbDrewIl: widget.mbDrewIl, mbPlastIl: widget.mbPlastIl,
                   drewWagaJedn: widget.drewWagaJedn, plastWagaJedn: widget.plastWagaJedn,
                 ),
               );
@@ -181,12 +188,15 @@ class _KalkulatorDialog extends StatefulWidget {
   final String docId;
   final int drewIl;
   final int plastIl;
+  final int mbDrewIl;
+  final int mbPlastIl;
   final double drewWagaJedn;
   final double plastWagaJedn;
 
   const _KalkulatorDialog({
     required this.lot, required this.docId,
     required this.drewIl, required this.plastIl,
+    this.mbDrewIl = 0, this.mbPlastIl = 0,
     required this.drewWagaJedn, required this.plastWagaJedn,
   });
 
@@ -201,15 +211,23 @@ class _KalkulatorDialogState extends State<_KalkulatorDialog> {
   late  TextEditingController _plastIlCtrl;
   late  TextEditingController _drewWagaCtrl;
   late  TextEditingController _plastWagaCtrl;
+  late  TextEditingController _mbDrewIlCtrl;
+  late  TextEditingController _mbPlastIlCtrl;
+  late  TextEditingController _mbDrewWagaCtrl;
+  late  TextEditingController _mbPlastWagaCtrl;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _drewIlCtrl   = TextEditingController(text: widget.drewIl > 0  ? '${widget.drewIl}'  : '');
-    _plastIlCtrl  = TextEditingController(text: widget.plastIl > 0 ? '${widget.plastIl}' : '');
-    _drewWagaCtrl = TextEditingController();
-    _plastWagaCtrl= TextEditingController();
+    _drewIlCtrl    = TextEditingController(text: widget.drewIl > 0    ? '${widget.drewIl}'    : '');
+    _plastIlCtrl   = TextEditingController(text: widget.plastIl > 0   ? '${widget.plastIl}'   : '');
+    _mbDrewIlCtrl  = TextEditingController(text: widget.mbDrewIl > 0  ? '${widget.mbDrewIl}'  : '');
+    _mbPlastIlCtrl = TextEditingController(text: widget.mbPlastIl > 0 ? '${widget.mbPlastIl}' : '');
+    _drewWagaCtrl  = TextEditingController();
+    _plastWagaCtrl = TextEditingController();
+    _mbDrewWagaCtrl  = TextEditingController(text: '60');
+    _mbPlastWagaCtrl = TextEditingController(text: '10');
   }
 
   @override
@@ -217,14 +235,19 @@ class _KalkulatorDialogState extends State<_KalkulatorDialog> {
     _zalCtrl.dispose(); _rozCtrl.dispose();
     _drewIlCtrl.dispose(); _plastIlCtrl.dispose();
     _drewWagaCtrl.dispose(); _plastWagaCtrl.dispose();
+    _mbDrewIlCtrl.dispose(); _mbPlastIlCtrl.dispose();
+    _mbDrewWagaCtrl.dispose(); _mbPlastWagaCtrl.dispose();
     super.dispose();
   }
 
   double _p(String v) => double.tryParse(v.replaceAll(',', '.')) ?? 0;
 
   double get _brutto => (_p(_zalCtrl.text) - _p(_rozCtrl.text)).clamp(0, double.infinity);
+  double get _taraMb => _p(_mbDrewIlCtrl.text)  * _p(_mbDrewWagaCtrl.text)
+                      + _p(_mbPlastIlCtrl.text)  * _p(_mbPlastWagaCtrl.text);
   double get _tara   => _p(_drewIlCtrl.text) * _p(_drewWagaCtrl.text)
-                      + _p(_plastIlCtrl.text) * _p(_plastWagaCtrl.text);
+                      + _p(_plastIlCtrl.text) * _p(_plastWagaCtrl.text)
+                      + _taraMb;
   double get _netto  => (_brutto - _tara).clamp(0, double.infinity);
 
   bool get _canSave => _brutto > 0;
@@ -244,6 +267,14 @@ class _KalkulatorDialogState extends State<_KalkulatorDialog> {
         if (_p(_rozCtrl.text) > 0) 'waga_a1_roz': _p(_rozCtrl.text),
         if (_p(_drewWagaCtrl.text) > 0) ...{'drew_waga_jedn': _p(_drewWagaCtrl.text), 'drew_waga_set': true},
         if (_p(_plastWagaCtrl.text) > 0) ...{'plast_waga_jedn': _p(_plastWagaCtrl.text), 'plast_waga_set': true},
+        if (_p(_mbDrewIlCtrl.text) > 0) ...{
+          'mb_drew_il': _p(_mbDrewIlCtrl.text).toInt(),
+          'mb_drew_waga': _p(_mbDrewWagaCtrl.text),
+        },
+        if (_p(_mbPlastIlCtrl.text) > 0) ...{
+          'mb_plast_il': _p(_mbPlastIlCtrl.text).toInt(),
+          'mb_plast_waga': _p(_mbPlastWagaCtrl.text),
+        },
       });
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
@@ -327,9 +358,23 @@ class _KalkulatorDialogState extends State<_KalkulatorDialog> {
               const SizedBox(width: 10),
               Expanded(child: _numField('Waga szt. [kg]', _plastWagaCtrl)),
             ]),
+            const SizedBox(height: 8),
+            const Text('SKRZYNIE MB', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.warningOrange, letterSpacing: 0.8)),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(child: _numField('Ilość MB drew.', _mbDrewIlCtrl, locked: widget.mbDrewIl > 0)),
+              const SizedBox(width: 10),
+              Expanded(child: _numField('Waga szt. [kg]', _mbDrewWagaCtrl)),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _numField('Ilość MB plast.', _mbPlastIlCtrl, locked: widget.mbPlastIl > 0)),
+              const SizedBox(width: 10),
+              Expanded(child: _numField('Waga szt. [kg]', _mbPlastWagaCtrl)),
+            ]),
             if (_tara > 0) ...[
               const SizedBox(height: 8),
-              _resultRow('Tara:', _tara, color: AppTheme.warningOrange),
+              _resultRow('Tara łącznie:', _tara, color: AppTheme.warningOrange),
             ],
 
             const SizedBox(height: 12),
