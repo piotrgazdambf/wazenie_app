@@ -226,35 +226,37 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       return;
     }
 
-    // Walidacja skrzyń
+    // Walidacja skrzyń (pomijana gdy inne owoce + znam wagę netto)
     final _drewIl  = _pi(_drewIlCtrl.text);
     final _plastIl = _pi(_plastIlCtrl.text);
-    if (_drewIl == 0 && _plastIl == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Podaj ilość skrzyń (drewniane lub plastikowe)'),
-          backgroundColor: AppTheme.errorRed,
-        ),
-      );
-      return;
-    }
-    if (_drewIl > 0 && _p(_drewWgCtrl.text) == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Podaj wagę skrzyni drewnianej [kg]'),
-          backgroundColor: AppTheme.errorRed,
-        ),
-      );
-      return;
-    }
-    if (_plastIl > 0 && _p(_plastWgCtrl.text) == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Podaj wagę skrzyni plastikowej [kg]'),
-          backgroundColor: AppTheme.errorRed,
-        ),
-      );
-      return;
+    if (_isJablkoGruszka || !_znaNetto) {
+      if (_drewIl == 0 && _plastIl == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Podaj ilość skrzyń (drewniane lub plastikowe)'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        return;
+      }
+      if (_drewIl > 0 && _p(_drewWgCtrl.text) == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Podaj wagę skrzyni drewnianej [kg]'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        return;
+      }
+      if (_plastIl > 0 && _p(_plastWgCtrl.text) == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Podaj wagę skrzyni plastikowej [kg]'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _saving = true);
