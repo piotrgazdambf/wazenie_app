@@ -930,15 +930,11 @@ class _KwScreenState extends ConsumerState<KwScreen> {
               big: true, highlight: true),
           const Divider(height: 16),
           // Parametry jakości
-          if (isJG) ...[
-            Row(children: [
-              Expanded(child: _NumField('BRIX', o.brixCtrl, required: true)),
-              const SizedBox(width: 8),
-              Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl, required: true)),
-            ]),
-          ] else ...[
-            _NumField('ODPAD [%]', o.odpadCtrl, required: true),
-          ],
+          Row(children: [
+            Expanded(child: _NumField('BRIX', o.brixCtrl, required: true)),
+            const SizedBox(width: 8),
+            Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl, required: true)),
+          ]),
           // Podgląd odpadu na żywo
           ValueListenableBuilder<TextEditingValue>(
             valueListenable: o.odpadCtrl,
