@@ -93,6 +93,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   String _stanAuto = 'DOBRY';
 
   bool _saving = false;
+  bool _znaNetto = false;
+  final _nettoCtrl = TextEditingController();
+
+  bool get _isJablkoGruszka {
+    final owoc = widget.data.owoc.toLowerCase().replaceAll(' eko', '');
+    return owoc.contains('jabłko') || owoc.contains('jab') ||
+        owoc.contains('gruszka') || owoc.contains('gruszk');
+  }
 
   // ── Init / Dispose ───────────────────────────────────────────────────────────
 
@@ -110,6 +118,11 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     for (final o in _odm) {
       _listenOdm(o);
     }
+    _nettoCtrl.addListener(_recalc);
+    if (!_isJablkoGruszka) {
+      final n = widget.data.owoc;
+      _odm.first.nazwaCtrl.text = n.isEmpty ? n : n[0].toUpperCase() + n.substring(1);
+    }
   }
 
   void _listenOdm(_OdmCtrl o) {
@@ -125,6 +138,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       _a1ZalCtrl, _a1RozCtrl, _a2ZalCtrl, _a2RozCtrl,
       _drewIlCtrl, _drewWgCtrl, _plastIlCtrl, _plastWgCtrl,
       _mbDrewIlCtrl, _mbDrewWgCtrl, _mbPlastIlCtrl, _mbPlastWgCtrl,
+      _nettoCtrl,
     ]) {
       c.dispose();
     }
@@ -141,11 +155,6 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   static int _pi(String v) => int.tryParse(v.trim()) ?? 0;
 
   void _recalc() {
-    final a1z = _p(_a1ZalCtrl.text);
-    final a1r = _p(_a1RozCtrl.text);
-    final a2z = _drugiAut ? _p(_a2ZalCtrl.text) : 0;
-    final a2r = _drugiAut ? _p(_a2RozCtrl.text) : 0;
-
     final tDrew  = _pi(_drewIlCtrl.text);
     final tPlast = _pi(_plastIlCtrl.text);
     final wDrew  = _p(_drewWgCtrl.text);
@@ -156,11 +165,23 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     final wMbDrew  = _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0.0;
     final wMbPlast = _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0.0;
 
-    final brutto    = (a1z - a1r) + (a2z - a2r);
     final taraDrew  = tDrew  * wDrew;
     final taraPlast = tPlast * wPlast;
     final taraMb    = mbDrew * wMbDrew + mbPlast * wMbPlast;
-    final netto     = brutto - taraDrew - taraPlast - taraMb;
+
+    final double brutto;
+    final double netto;
+    if (_znaNetto) {
+      netto  = _p(_nettoCtrl.text);
+      brutto = netto + taraDrew + taraPlast + taraMb;
+    } else {
+      final a1z = _p(_a1ZalCtrl.text);
+      final a1r = _p(_a1RozCtrl.text);
+      final a2z = _drugiAut ? _p(_a2ZalCtrl.text) : 0;
+      final a2r = _drugiAut ? _p(_a2RozCtrl.text) : 0;
+      brutto = (a1z - a1r) + (a2z - a2r);
+      netto  = brutto - taraDrew - taraPlast - taraMb;
+    }
 
     for (final o in _odm) {
       o.wagaNetto = KwCalculations.wagaNettoOdmiany(
@@ -292,10 +313,11 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'stan_samochodu':    _stanAuto,
         'waga_brutto':       _brutto.toStringAsFixed(2),
         'waga_netto_total':  _netto.toStringAsFixed(2),
-        'waga_a1_zal':       _p(_a1ZalCtrl.text),
-        'waga_a1_roz':       _p(_a1RozCtrl.text),
-        'waga_a2_zal':       _drugiAut ? _p(_a2ZalCtrl.text) : 0,
-        'waga_a2_roz':       _drugiAut ? _p(_a2RozCtrl.text) : 0,
+        'waga_a1_zal':       _znaNetto ? 0.0 : _p(_a1ZalCtrl.text),
+        'waga_a1_roz':       _znaNetto ? 0.0 : _p(_a1RozCtrl.text),
+        'waga_a2_zal':       (!_znaNetto && _drugiAut) ? _p(_a2ZalCtrl.text) : 0,
+        'waga_a2_roz':       (!_znaNetto && _drugiAut) ? _p(_a2RozCtrl.text) : 0,
+        if (_znaNetto) 'znana_netto': true,
         // Skrzynie MB
         if (_maMbSkrzynie) ...{
           'mb_drew_il':    mbDrewCount,
@@ -451,8 +473,10 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     _mbDrewWgCtrl.text = '60';
     _mbPlastIlCtrl.clear();
     _mbPlastWgCtrl.clear();
+    _nettoCtrl.clear();
 
     setState(() {
+      _znaNetto    = false;
       _drugiAut    = false;
       _maMbSkrzynie = false;
       _stanOpak    = 'DOBRY';
@@ -647,23 +671,55 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       title: 'Wagi aut',
       child: Column(
         children: [
-          _NumField('Waga auta I załadowanego [kg]',  _a1ZalCtrl, required: true),
-          const SizedBox(height: 8),
-          _NumField('Waga auta I rozładowanego [kg]', _a1RozCtrl, required: true),
-          const SizedBox(height: 8),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Drugie auto'),
-            value: _drugiAut,
-            onChanged: (v) {
-              setState(() => _drugiAut = v);
-              _recalc();
-            },
-          ),
-          if (_drugiAut) ...[
-            _NumField('Waga auta II załadowanego [kg]',  _a2ZalCtrl),
+          if (!_isJablkoGruszka) ...[
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Znam wagę netto'),
+              subtitle: const Text('Zaznacz jeśli znasz wagę bez ważenia aut',
+                  style: TextStyle(fontSize: 12)),
+              value: _znaNetto,
+              onChanged: (v) {
+                setState(() => _znaNetto = v);
+                _recalc();
+              },
+            ),
+            const Divider(height: 12),
+          ],
+          if (_znaNetto) ...[
+            _NumField('Waga netto surowca [kg]', _nettoCtrl, required: true),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.borderLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(children: [
+                Icon(Icons.info_outline, size: 14, color: AppTheme.textSecondary),
+                SizedBox(width: 6),
+                Text('Waga załadowanego/rozładowanego auta: —',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              ]),
+            ),
+          ] else ...[
+            _NumField('Waga auta I załadowanego [kg]',  _a1ZalCtrl, required: true),
             const SizedBox(height: 8),
-            _NumField('Waga auta II rozładowanego [kg]', _a2RozCtrl),
+            _NumField('Waga auta I rozładowanego [kg]', _a1RozCtrl, required: true),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Drugie auto'),
+              value: _drugiAut,
+              onChanged: (v) {
+                setState(() => _drugiAut = v);
+                _recalc();
+              },
+            ),
+            if (_drugiAut) ...[
+              _NumField('Waga auta II załadowanego [kg]',  _a2ZalCtrl),
+              const SizedBox(height: 8),
+              _NumField('Waga auta II rozładowanego [kg]', _a2RozCtrl),
+            ],
           ],
         ],
       ),
@@ -762,11 +818,11 @@ class _KwScreenState extends ConsumerState<KwScreen> {
 
   Widget _odmCard(int idx, _OdmCtrl o) {
     final kod = widget.data.przeznaczenieKod;
-    final showTward = kod == 'S' || kod == 'O';
-    final showPw    = kod == 'O';
-    final owoc = widget.data.owoc.toLowerCase().replaceAll(' eko', '');
-    final showOdmiana = owoc.contains('jabłko') || owoc.contains('jab') ||
-        owoc.contains('gruszka') || owoc.contains('gruszk');
+    final showPw     = kod == 'O';
+    final isJG       = _isJablkoGruszka;
+    final showOdmiana = isJG;
+    final showTward  = isJG ? (kod == 'S' || kod == 'O') : true;
+    final twardReq   = isJG && (kod == 'S' || kod == 'O');
 
     return _SectionCard(
       title: 'Odmiana ${idx + 1}',
@@ -872,11 +928,15 @@ class _KwScreenState extends ConsumerState<KwScreen> {
               big: true, highlight: true),
           const Divider(height: 16),
           // Parametry jakości
-          Row(children: [
-            Expanded(child: _NumField('BRIX', o.brixCtrl, required: true)),
-            const SizedBox(width: 8),
-            Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl, required: true)),
-          ]),
+          if (isJG) ...[
+            Row(children: [
+              Expanded(child: _NumField('BRIX', o.brixCtrl, required: true)),
+              const SizedBox(width: 8),
+              Expanded(child: _NumField('ODPAD [%]', o.odpadCtrl, required: true)),
+            ]),
+          ] else ...[
+            _NumField('ODPAD [%]', o.odpadCtrl, required: true),
+          ],
           // Podgląd odpadu na żywo
           ValueListenableBuilder<TextEditingValue>(
             valueListenable: o.odpadCtrl,
@@ -896,7 +956,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           ),
           if (showTward) ...[
             const SizedBox(height: 8),
-            _TwardoscField(ctrl: o.twardCtrl, required: true),
+            _TwardoscField(ctrl: o.twardCtrl, required: twardReq),
           ],
           if (showPw) ...[
             const SizedBox(height: 8),
@@ -976,11 +1036,12 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       przeznaczenieKod: d.przeznaczenieKod,
       nrPojazdu:        _nrPojazduCtrl.text.trim(),
       nrTelefonu:    _nrTelefonuCtrl.text.trim(),
-      wagaA1Zal:     _p(_a1ZalCtrl.text),
-      wagaA1Roz:     _p(_a1RozCtrl.text),
-      drugiAut:      _drugiAut,
+      wagaA1Zal:     _znaNetto ? 0.0 : _p(_a1ZalCtrl.text),
+      wagaA1Roz:     _znaNetto ? 0.0 : _p(_a1RozCtrl.text),
+      drugiAut:      !_znaNetto && _drugiAut,
       wagaA2Zal:     _p(_a2ZalCtrl.text),
       wagaA2Roz:     _p(_a2RozCtrl.text),
+      znaNetto:      _znaNetto,
       drewIl:           _pi(_drewIlCtrl.text),
       drewWagaJedn:     _p(_drewWgCtrl.text),
       plastIl:          _pi(_plastIlCtrl.text),
@@ -1147,6 +1208,10 @@ class _KwScreenState extends ConsumerState<KwScreen> {
 
   void _addOdmiana() {
     final o = _OdmCtrl();
+    if (!_isJablkoGruszka) {
+      final n = widget.data.owoc;
+      o.nazwaCtrl.text = n.isEmpty ? n : n[0].toUpperCase() + n.substring(1);
+    }
     _listenOdm(o);
     setState(() => _odm.add(o));
   }

@@ -59,6 +59,7 @@ class KwPdfData {
   final String stanOpak;
   final String stanAuto;
   final bool isKwg;
+  final bool znaNetto;
 
   const KwPdfData({
     required this.data,
@@ -87,6 +88,7 @@ class KwPdfData {
     required this.stanOpak,
     required this.stanAuto,
     this.isKwg = false,
+    this.znaNetto = false,
   });
 
   factory KwPdfData.fromFirestoreMap(Map<String, dynamic> d) {
@@ -147,6 +149,7 @@ class KwPdfData {
       stanOpak: d['stan_opakowania'] as String? ?? '',
       stanAuto: d['stan_samochodu']  as String? ?? '',
       isKwg:    d['is_kwg'] == true,
+      znaNetto: d['znana_netto'] == true,
     );
   }
 
@@ -239,6 +242,7 @@ class KwPdfData {
       stanOpak: d0['stan_opakowania'] as String? ?? '',
       stanAuto: d0['stan_samochodu']  as String? ?? '',
       isKwg:    d0['is_kwg'] == true,
+      znaNetto: d0['znana_netto'] == true,
     );
   }
 
@@ -305,7 +309,7 @@ class KwPdfGenerator {
     final isCzaplin   = !d.isKwg;
     final hasOdpad    = !d.isKwg && d.odmiany.any((o) => o.odpad.isNotEmpty);
     final hasBrix     = d.isKwg && d.odmiany.any((o) => o.brix.isNotEmpty);
-    final hasTward    = isSok || d.isKwg;
+    final hasTward    = isSok || d.isKwg || (!d.isKwg && d.odmiany.any((o) => o.twardosc.isNotEmpty));
     final hasKaliber  = isObieranie && isCzaplin && d.odmiany.any((o) => o.kaliber.isNotEmpty);
     // KWG: wymagane BRIX + twardość; KW: odpad/tward/kaliber wg przeznaczenia
     final hasParams   = d.isKwg
@@ -466,8 +470,8 @@ class KwPdfGenerator {
                 }),
               ] else ...[
                 // KW: wagi aut 1-4, skrzynie 5-6, brutto 7, netto 8, odmiany 9-12
-                _w3('1', 'Waga załadowanego auta I',   d.wagaA1Zal > 0 ? _n(d.wagaA1Zal) : '', pad, sR9, sB9),
-                _w3('2', 'Waga rozładowanego auta I',  d.wagaA1Roz > 0 ? _n(d.wagaA1Roz) : '', pad, sR9, sB9),
+                _w3('1', 'Waga załadowanego auta I',   d.znaNetto ? '—' : (d.wagaA1Zal > 0 ? _n(d.wagaA1Zal) : ''), pad, sR9, sB9),
+                _w3('2', 'Waga rozładowanego auta I',  d.znaNetto ? '—' : (d.wagaA1Roz > 0 ? _n(d.wagaA1Roz) : ''), pad, sR9, sB9),
                 if (d.drugiAut && (d.wagaA2Zal > 0 || d.wagaA2Roz > 0)) ...[
                   _w3('3', 'Waga załadowanego auta II',  _n(d.wagaA2Zal), pad, sR9, sB9),
                   _w3('4', 'Waga rozładowanego auta II', _n(d.wagaA2Roz), pad, sR9, sB9),
@@ -580,7 +584,7 @@ class KwPdfGenerator {
                           if (hasOdpad && odm.odpad.isNotEmpty) {
                             rows.add(_pRow('${++nr}', 'ODPAD w %', odm.odpad, pad, sR9, sB9));
                           }
-                          if (hasTward) {
+                          if (hasTward && (isSok || d.isKwg || odm.twardosc.isNotEmpty)) {
                             rows.add(_pRow('${++nr}', 'TWARDOŚĆ', odm.twardosc, pad, sR9, sB9));
                           }
                           if (hasKaliber && odm.kaliber.isNotEmpty) {
