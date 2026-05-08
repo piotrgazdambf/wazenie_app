@@ -785,7 +785,7 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final now = DateTime.now();
-    final nowStr = '${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')}.${now.year} ${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
+    final nowStr = '${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')}.${now.year} ${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}:${now.second.toString().padLeft(2,'0')}';
     try {
       final e        = widget.entry;
       final wagaNetto = _wagaNettoCtrl.text.trim();
@@ -1003,7 +1003,7 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
                       e.stanAuto.isNotEmpty ? e.stanAuto : '—'),
                 ]),
 
-                if (!_editing && widget.isAdmin &&
+                if (!_editing &&
                     (e.createdByName.isNotEmpty || e.modifications.isNotEmpty)) ...[
                   const SizedBox(height: 12),
                   _Section('HISTORIA', [
@@ -1154,24 +1154,35 @@ class _ModRow extends StatelessWidget {
   final String changes;
   const _ModRow({required this.at, required this.by, required this.changes});
 
+  // Wyciąga samą godzinę z "dd.MM.yyyy HH:mm:ss" → "HH:mm:ss"
+  String get _timeOnly {
+    final parts = at.split(' ');
+    return parts.length >= 2 ? parts.last : at;
+  }
+
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: 140,
-            child: Text(at,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+              children: [
+                TextSpan(text: by,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (changes.isNotEmpty) ...[
+                  const TextSpan(text: ': '),
+                  TextSpan(text: changes,
+                      style: const TextStyle(color: AppTheme.textSecondary)),
+                ],
+                TextSpan(text: '  $_timeOnly',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+              ],
+            ),
           ),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(by,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
-              if (changes.isNotEmpty)
-                Text(changes,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            ]),
-          ),
+          // Pełna data poniżej (mniejsza)
+          Text(at,
+              style: const TextStyle(fontSize: 11, color: AppTheme.borderLight)),
         ]),
       );
 }
