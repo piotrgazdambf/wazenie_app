@@ -1003,7 +1003,7 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
                       e.stanAuto.isNotEmpty ? e.stanAuto : '—'),
                 ]),
 
-                if (!_editing &&
+                if (!_editing && widget.isAdmin &&
                     (e.createdByName.isNotEmpty || e.modifications.isNotEmpty)) ...[
                   const SizedBox(height: 12),
                   _Section('HISTORIA', [
