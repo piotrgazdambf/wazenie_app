@@ -107,9 +107,10 @@ class _WsgScreenState extends ConsumerState<WsgScreen> {
           .get();
       int max = 0;
       for (final doc in snap.docs) {
+        // tylko Czaplin — LOT zaczyna się od 'C/'
+        final lot = doc.data()['lot'] as String? ?? '';
+        if (!lot.startsWith('C/')) continue;
         final raw = doc.data()['nr_dostawy'] as String? ?? '';
-        // ignoruj LOT-y (zawierają '/') - bierz tylko czyste liczby
-        if (raw.contains('/')) continue;
         final n = int.tryParse(raw.trim()) ?? 0;
         if (n > max) max = n;
       }
