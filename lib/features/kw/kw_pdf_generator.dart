@@ -7,6 +7,19 @@ import '../../core/pdf/logo_mbf_b64.dart';
 
 // ── Modele danych ─────────────────────────────────────────────────────────────
 
+class KwWagaGrupa {
+  final String typ;      // 'drew' | 'plast'
+  final int    ilosc;
+  final double wagaJedn;
+  const KwWagaGrupa({required this.typ, required this.ilosc, required this.wagaJedn});
+  double get tara => ilosc * wagaJedn;
+  factory KwWagaGrupa.fromMap(Map<String, dynamic> m) => KwWagaGrupa(
+    typ:      m['typ'] as String? ?? 'drew',
+    ilosc:    m['ilosc'] is int ? m['ilosc'] as int : int.tryParse(m['ilosc']?.toString() ?? '') ?? 0,
+    wagaJedn: m['waga']  is num ? (m['waga']  as num).toDouble() : 0,
+  );
+}
+
 class KwOdmianaData {
   final String nazwa;
   final int drewIl;
@@ -17,6 +30,7 @@ class KwOdmianaData {
   final String odpad;
   final String twardosc;
   final String kaliber;
+  final List<KwWagaGrupa> wagiGrupy; // KWG: grupy różnych wag per odmiana
 
   const KwOdmianaData({
     required this.nazwa,
@@ -28,6 +42,7 @@ class KwOdmianaData {
     this.odpad = '',
     this.twardosc = '',
     this.kaliber = '',
+    this.wagiGrupy = const [],
   });
 }
 
@@ -60,6 +75,8 @@ class KwPdfData {
   final String stanAuto;
   final bool isKwg;
   final bool znaNetto;
+  final bool rozneWagi;               // KW: różne wagi skrzyń
+  final List<KwWagaGrupa> wagiGrupy;  // KW: grupy różnych wag (top-level)
 
   const KwPdfData({
     required this.data,
@@ -89,6 +106,8 @@ class KwPdfData {
     required this.stanAuto,
     this.isKwg = false,
     this.znaNetto = false,
+    this.rozneWagi = false,
+    this.wagiGrupy = const [],
   });
 
   factory KwPdfData.fromFirestoreMap(Map<String, dynamic> d) {
@@ -146,10 +165,14 @@ class KwPdfData {
           kaliber:  d['kaliber']  as String? ?? '',
         ),
       ],
-      stanOpak: d['stan_opakowania'] as String? ?? '',
-      stanAuto: d['stan_samochodu']  as String? ?? '',
-      isKwg:    d['is_kwg'] == true,
-      znaNetto: d['znana_netto'] == true,
+      stanOpak:   d['stan_opakowania'] as String? ?? '',
+      stanAuto:   d['stan_samochodu']  as String? ?? '',
+      isKwg:      d['is_kwg'] == true,
+      znaNetto:   d['znana_netto'] == true,
+      rozneWagi:  d['rozne_wagi'] == true,
+      wagiGrupy:  (d['wagi_grupy'] as List<dynamic>? ?? [])
+          .map((g) => KwWagaGrupa.fromMap(g as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -194,6 +217,9 @@ class KwPdfData {
       totalDrew  += drewIl;
       totalPlast += plastIl;
       totalNetto += wagaNetto;
+      final wagiGrupyOdm = (d['wagi_grupy'] as List<dynamic>? ?? [])
+          .map((g) => KwWagaGrupa.fromMap(g as Map<String, dynamic>))
+          .toList();
       return KwOdmianaData(
         nazwa:     d['odmiana']  as String? ?? '',
         drewIl:    drewIl,
@@ -204,6 +230,7 @@ class KwPdfData {
         odpad:     d['odpad']    as String? ?? '',
         twardosc:  d['twardosc'] as String? ?? '',
         kaliber:   d['kaliber']  as String? ?? '',
+        wagiGrupy: wagiGrupyOdm,
       );
     }).toList();
 
@@ -287,8 +314,24 @@ class KwPdfGenerator {
     const pad  = pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3);
     const padH = pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2);
 
-    final taraDrew    = d.drewIl    * d.drewWagaJedn;
-    final taraPlast   = d.plastIl   * d.plastWagaJedn;
+    // KW: jeśli różne wagi, oblicz tarę z grup; KWG: z grup per odmiana
+    final kwGrupyDrew  = d.rozneWagi ? d.wagiGrupy.where((g) => g.typ == 'drew').toList()  : <KwWagaGrupa>[];
+    final kwGrupyPlast = d.rozneWagi ? d.wagiGrupy.where((g) => g.typ == 'plast').toList() : <KwWagaGrupa>[];
+    final kwgGrupyDrew  = d.odmiany.expand((o) => o.wagiGrupy.where((g) => g.typ == 'drew')).toList();
+    final kwgGrupyPlast = d.odmiany.expand((o) => o.wagiGrupy.where((g) => g.typ == 'plast')).toList();
+
+    final taraDrew  = kwGrupyDrew.isNotEmpty
+        ? kwGrupyDrew.fold(0.0,  (s, g) => s + g.tara)
+        : d.drewIl  * d.drewWagaJedn;
+    final taraPlast = kwGrupyPlast.isNotEmpty
+        ? kwGrupyPlast.fold(0.0, (s, g) => s + g.tara)
+        : d.plastIl * d.plastWagaJedn;
+    final taraDrewKwg  = kwgGrupyDrew.isNotEmpty
+        ? kwgGrupyDrew.fold(0.0,  (s, g) => s + g.tara)
+        : d.drewIl  * d.drewWagaJedn;
+    final taraPlastKwg = kwgGrupyPlast.isNotEmpty
+        ? kwgGrupyPlast.fold(0.0, (s, g) => s + g.tara)
+        : d.plastIl * d.plastWagaJedn;
     final taraMbDrew  = d.mbDrewIl  * d.mbDrewWagaJedn;
     final taraMbPlast = d.mbPlastIl * d.mbPlastWagaJedn;
     final hasMb       = d.mbDrewIl > 0 || d.mbPlastIl > 0;
@@ -426,8 +469,12 @@ class KwPdfGenerator {
                     ),
                   ),
                 ]),
-                _w3skrzynie('2', 'Ilość skrzyń drewnianych',  d.drewIl,  d.drewWagaJedn,  taraDrew,  pad, sR9, sB9),
-                _w3skrzynie('3', 'Ilość skrzyń plastikowych', d.plastIl, d.plastWagaJedn, taraPlast, pad, sR9, sB9),
+                kwgGrupyDrew.isNotEmpty
+                    ? _w3skrzynieGrupy('2', 'Ilość skrzyń drewnianych',  d.drewIl,  taraDrewKwg,  kwgGrupyDrew,  pad, sR9, sB9)
+                    : _w3skrzynie('2', 'Ilość skrzyń drewnianych',  d.drewIl,  d.drewWagaJedn,  taraDrewKwg,  pad, sR9, sB9),
+                kwgGrupyPlast.isNotEmpty
+                    ? _w3skrzynieGrupy('3', 'Ilość skrzyń plastikowych', d.plastIl, taraPlastKwg, kwgGrupyPlast, pad, sR9, sB9)
+                    : _w3skrzynie('3', 'Ilość skrzyń plastikowych', d.plastIl, d.plastWagaJedn, taraPlastKwg, pad, sR9, sB9),
                 if (hasMb && d.mbDrewIl > 0)
                   _w3skrzynie('2a', 'Ilość skrzyń MB drewnianych',  d.mbDrewIl,  d.mbDrewWagaJedn,  taraMbDrew,  pad, sR9, sB9),
                 if (hasMb && d.mbPlastIl > 0)
@@ -440,31 +487,41 @@ class KwPdfGenerator {
                   final hasDrew  = o != null && o.drewIl  > 0;
                   final hasPlast = o != null && o.plastIl > 0;
                   final hasZwrot = o != null && o.zwrotPct > 0;
+                  final hasGrupy = o != null && o.wagiGrupy.isNotEmpty;
                   return pw.TableRow(children: [
                     pw.Container(padding: padH, child: pw.Text('${i + 4}', style: sB9)),
                     pw.Container(padding: padH, child: pw.Text(nazwaTxt, style: sB9)),
                     pw.Container(
                       padding: padH,
-                      child: !hasO ? pw.SizedBox() : pw.Row(children: [
-                        if (hasDrew && !hasPlast) ...[
-                          pw.Text('Ilość skrzyń drewnianych: ', style: sR9),
-                          pw.Text('${o!.drewIl}', style: sB9),
+                      child: !hasO ? pw.SizedBox() : pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Row(children: [
+                            if (hasDrew && !hasPlast) ...[
+                              pw.Text('Ilość skrzyń drewnianych: ', style: sR9),
+                              pw.Text('${o!.drewIl}', style: sB9),
+                            ],
+                            if (hasPlast && !hasDrew) ...[
+                              pw.Text('Ilość skrzyń plastikowych: ', style: sR9),
+                              pw.Text('${o!.plastIl}', style: sB9),
+                            ],
+                            if (hasDrew && hasPlast) ...[
+                              pw.Text('Ilość skrzyń  |  Drewnianych: ', style: sR9),
+                              pw.Text('${o!.drewIl}', style: sB9),
+                              pw.Text('  |  Plastikowych: ', style: sR9),
+                              pw.Text('${o.plastIl}', style: sB9),
+                            ],
+                            if (hasZwrot) ...[
+                              pw.Text('  |  Zwrot: ', style: sR9),
+                              pw.Text('${o!.zwrotPct}%', style: sB9),
+                            ],
+                          ]),
+                          if (hasGrupy) ...[
+                            pw.SizedBox(height: 2),
+                            pw.Text(_grupyLine(o!.wagiGrupy), style: sR8),
+                          ],
                         ],
-                        if (hasPlast && !hasDrew) ...[
-                          pw.Text('Ilość skrzyń plastikowych: ', style: sR9),
-                          pw.Text('${o!.plastIl}', style: sB9),
-                        ],
-                        if (hasDrew && hasPlast) ...[
-                          pw.Text('Ilość skrzyń  |  Drewnianych: ', style: sR9),
-                          pw.Text('${o!.drewIl}', style: sB9),
-                          pw.Text('  |  Plastikowych: ', style: sR9),
-                          pw.Text('${o.plastIl}', style: sB9),
-                        ],
-                        if (hasZwrot) ...[
-                          pw.Text('  |  Zwrot: ', style: sR9),
-                          pw.Text('${o!.zwrotPct}%', style: sB9),
-                        ],
-                      ]),
+                      ),
                     ),
                   ]);
                 }),
@@ -476,8 +533,12 @@ class KwPdfGenerator {
                   _w3('3', 'Waga załadowanego auta II',  _n(d.wagaA2Zal), pad, sR9, sB9),
                   _w3('4', 'Waga rozładowanego auta II', _n(d.wagaA2Roz), pad, sR9, sB9),
                 ],
-                _w3skrzynie('5', 'Ilość skrzyń drewnianych',  d.drewIl,  d.drewWagaJedn,  taraDrew,  pad, sR9, sB9),
-                _w3skrzynie('6', 'Ilość skrzyń plastikowych', d.plastIl, d.plastWagaJedn, taraPlast, pad, sR9, sB9),
+                kwGrupyDrew.isNotEmpty
+                    ? _w3skrzynieGrupy('5', 'Ilość skrzyń drewnianych',  d.drewIl,  taraDrew,  kwGrupyDrew,  pad, sR9, sB9)
+                    : _w3skrzynie('5', 'Ilość skrzyń drewnianych',  d.drewIl,  d.drewWagaJedn,  taraDrew,  pad, sR9, sB9),
+                kwGrupyPlast.isNotEmpty
+                    ? _w3skrzynieGrupy('6', 'Ilość skrzyń plastikowych', d.plastIl, taraPlast, kwGrupyPlast, pad, sR9, sB9)
+                    : _w3skrzynie('6', 'Ilość skrzyń plastikowych', d.plastIl, d.plastWagaJedn, taraPlast, pad, sR9, sB9),
                 if (hasMb && d.mbDrewIl > 0)
                   _w3skrzynie('5a', 'Ilość skrzyń MB drewnianych',  d.mbDrewIl,  d.mbDrewWagaJedn,  taraMbDrew,  pad, sR9, sB9),
                 if (hasMb && d.mbPlastIl > 0)
@@ -790,6 +851,42 @@ class KwPdfGenerator {
         pw.Container(padding: pad, child: pw.Text(label, style: s)),
         pw.Container(padding: pad, child: pw.Text(value, style: bs)),
       ]);
+
+  // Wiersz skrzyń z różnymi wagami: ilość + tara + lista grup
+  static pw.TableRow _w3skrzynieGrupy(String num, String desc,
+      int il, double tara, List<KwWagaGrupa> grupy,
+      pw.EdgeInsets pad, pw.TextStyle s, pw.TextStyle bs) =>
+      pw.TableRow(children: [
+        pw.Container(padding: pad, child: pw.Text(num, style: bs)),
+        pw.Container(padding: pad, child: pw.Text(desc, style: s)),
+        pw.Container(
+          padding: pad,
+          child: il == 0
+              ? pw.SizedBox()
+              : pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  pw.Row(children: [
+                    pw.Text('$il', style: bs),
+                    pw.Text('  |  TARA: ', style: s),
+                    pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
+                    pw.Text('  (różne wagi)', style: s),
+                  ]),
+                  pw.SizedBox(height: 2),
+                  pw.Text(_grupyLine(grupy), style: pw.TextStyle(fontSize: 8)),
+                ]),
+        ),
+      ]);
+
+  // Formatuje grupy jako np. "Drew: 10×20kg, 5×22kg  |  Plast: 3×15kg"
+  static String _grupyLine(List<KwWagaGrupa> grupy) {
+    final drew  = grupy.where((g) => g.typ == 'drew').toList();
+    final plast = grupy.where((g) => g.typ == 'plast').toList();
+    String fmt(List<KwWagaGrupa> list) =>
+        list.map((g) => '${g.ilosc}×${g.wagaJedn.toStringAsFixed(0)}kg').join(',  ');
+    final parts = <String>[];
+    if (drew.isNotEmpty)  parts.add('Drew: ${fmt(drew)}');
+    if (plast.isNotEmpty) parts.add('Plast: ${fmt(plast)}');
+    return parts.join('   |   ');
+  }
 
   static String _n(double v) => v.toStringAsFixed(0);
 }

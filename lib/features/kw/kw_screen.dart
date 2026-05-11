@@ -41,6 +41,16 @@ class _OdmCtrl {
   }
 }
 
+// ── Pomocnicza klasa grupy różnych wag skrzyń ─────────────────────────────────
+
+class _WagaGrupa {
+  String typ; // 'drew' | 'plast'
+  final iloscCtrl = TextEditingController();
+  final wagaCtrl  = TextEditingController();
+  _WagaGrupa({this.typ = 'drew'});
+  void dispose() { iloscCtrl.dispose(); wagaCtrl.dispose(); }
+}
+
 // ── Ekran Karty Ważenia ───────────────────────────────────────────────────────
 
 class KwScreen extends ConsumerStatefulWidget {
@@ -96,6 +106,9 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   bool _znaNetto = false;
   final _nettoCtrl = TextEditingController();
 
+  bool _rozneWagi = false;
+  final List<_WagaGrupa> _wagiGrupy = [];
+
   bool get _isJablkoGruszka {
     final owoc = widget.data.owoc.toLowerCase().replaceAll(' eko', '');
     return owoc.contains('jabłko') || owoc.contains('jab') ||
@@ -119,10 +132,18 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       _listenOdm(o);
     }
     _nettoCtrl.addListener(_recalc);
+    _addWagaGrupa();
     if (!_isJablkoGruszka) {
       final n = widget.data.owoc;
       _odm.first.nazwaCtrl.text = n.isEmpty ? n : n[0].toUpperCase() + n.substring(1);
     }
+  }
+
+  void _addWagaGrupa({String typ = 'drew'}) {
+    final g = _WagaGrupa(typ: typ);
+    g.iloscCtrl.addListener(_recalc);
+    g.wagaCtrl.addListener(_recalc);
+    _wagiGrupy.add(g);
   }
 
   void _listenOdm(_OdmCtrl o) {
@@ -142,9 +163,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     ]) {
       c.dispose();
     }
-    for (final o in _odm) {
-      o.dispose();
-    }
+    for (final o in _odm) o.dispose();
+    for (final g in _wagiGrupy) g.dispose();
     super.dispose();
   }
 
@@ -155,18 +175,36 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   static int _pi(String v) => int.tryParse(v.trim()) ?? 0;
 
   void _recalc() {
-    final tDrew  = _pi(_drewIlCtrl.text);
-    final tPlast = _pi(_plastIlCtrl.text);
-    final wDrew  = _p(_drewWgCtrl.text);
-    final wPlast = _p(_plastWgCtrl.text);
+    final int tDrew, tPlast;
+    final double wDrew, wPlast, taraDrew, taraPlast;
+
+    if (_rozneWagi && _wagiGrupy.isNotEmpty) {
+      var dIl = 0; var pIl = 0;
+      var dTara = 0.0; var pTara = 0.0;
+      for (final g in _wagiGrupy) {
+        final il = _pi(g.iloscCtrl.text);
+        final wg = _p(g.wagaCtrl.text);
+        if (g.typ == 'drew') { dIl += il; dTara += il * wg; }
+        else                 { pIl += il; pTara += il * wg; }
+      }
+      tDrew = dIl; tPlast = pIl;
+      taraDrew = dTara; taraPlast = pTara;
+      wDrew  = dIl > 0 ? dTara / dIl : 0;
+      wPlast = pIl > 0 ? pTara / pIl : 0;
+    } else {
+      tDrew  = _pi(_drewIlCtrl.text);
+      tPlast = _pi(_plastIlCtrl.text);
+      wDrew  = _p(_drewWgCtrl.text);
+      wPlast = _p(_plastWgCtrl.text);
+      taraDrew  = tDrew  * wDrew;
+      taraPlast = tPlast * wPlast;
+    }
 
     final mbDrew   = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
     final mbPlast  = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
     final wMbDrew  = _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0.0;
     final wMbPlast = _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0.0;
 
-    final taraDrew  = tDrew  * wDrew;
-    final taraPlast = tPlast * wPlast;
     final taraMb    = mbDrew * wMbDrew + mbPlast * wMbPlast;
 
     final double brutto;
@@ -271,14 +309,35 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     final db      = FirebaseFirestore.instance;
     final batch   = db.batch();
 
+    // Efektywne wagi skrzyń (normalne lub z grup różnych wag)
+    final double drewWagaJednEff, plastWagaJednEff;
+    final List<Map<String, dynamic>> wagiGrupyData;
+    if (_rozneWagi && _wagiGrupy.isNotEmpty) {
+      var dIl = 0; var pIl = 0; var dTara = 0.0; var pTara = 0.0;
+      wagiGrupyData = [];
+      for (final g in _wagiGrupy) {
+        final il = _pi(g.iloscCtrl.text);
+        final wg = _p(g.wagaCtrl.text);
+        wagiGrupyData.add({'typ': g.typ, 'ilosc': il, 'waga': wg});
+        if (g.typ == 'drew') { dIl += il; dTara += il * wg; }
+        else                 { pIl += il; pTara += il * wg; }
+      }
+      drewWagaJednEff  = dIl > 0 ? dTara / dIl : 0;
+      plastWagaJednEff = pIl > 0 ? pTara / pIl : 0;
+    } else {
+      drewWagaJednEff  = _p(_drewWgCtrl.text);
+      plastWagaJednEff = _p(_plastWgCtrl.text);
+      wagiGrupyData    = [];
+    }
+
     final total = _odm.length;
     for (int i = 0; i < total; i++) {
       final o   = _odm[i];
       final lot   = d.lotForOdmiana(i, total);
       final docId        = lot.replaceAll('/', '_');
       final skrz         = '${_pi(o.drewCtrl.text)}/${_pi(o.plastCtrl.text)}';
-      final drewWagaJedn  = _p(_drewWgCtrl.text);
-      final plastWagaJedn = _p(_plastWgCtrl.text);
+      final drewWagaJedn  = drewWagaJednEff;
+      final plastWagaJedn = plastWagaJednEff;
       final drewCount     = _pi(o.drewCtrl.text);
       final plastCount    = _pi(o.plastCtrl.text);
       final mbDrewCount   = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
@@ -326,6 +385,10 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           'mb_drew_waga':  mbDrewWaga,
           'mb_plast_il':   mbPlastCount,
           'mb_plast_waga': mbPlastWaga,
+        },
+        if (_rozneWagi && wagiGrupyData.isNotEmpty) ...{
+          'rozne_wagi':  true,
+          'wagi_grupy':  wagiGrupyData,
         },
         'status':            'PRZESŁANO',
         'createdBy':         userId,
@@ -477,17 +540,22 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     _mbPlastWgCtrl.clear();
     _nettoCtrl.clear();
 
+    for (final g in _wagiGrupy) g.dispose();
+    _wagiGrupy.clear();
+    _addWagaGrupa();
+
     setState(() {
-      _znaNetto    = false;
-      _drugiAut    = false;
+      _znaNetto     = false;
+      _drugiAut     = false;
       _maMbSkrzynie = false;
-      _stanOpak    = 'DOBRY';
-      _stanAuto    = 'DOBRY';
-      _brutto      = 0;
-      _taraDrew    = 0;
-      _taraPlast   = 0;
-      _taraMb      = 0;
-      _netto       = 0;
+      _rozneWagi    = false;
+      _stanOpak     = 'DOBRY';
+      _stanAuto     = 'DOBRY';
+      _brutto       = 0;
+      _taraDrew     = 0;
+      _taraPlast    = 0;
+      _taraMb       = 0;
+      _netto        = 0;
     });
   }
 
@@ -779,8 +847,92 @@ class _KwScreenState extends ConsumerState<KwScreen> {
             const SizedBox(height: 4),
             _AutoCalcRow('TARA MB łącznie', _taraMb),
           ],
+          const Divider(height: 20),
+          // Różne wagi skrzyń
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Czy skrzynie mają różną wagę?',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Zaznacz jeśli skrzynie tego samego rodzaju mają różne wagi jednostkowe',
+                style: TextStyle(fontSize: 12)),
+            value: _rozneWagi,
+            onChanged: (v) {
+              setState(() => _rozneWagi = v);
+              _recalc();
+            },
+          ),
+          if (_rozneWagi) ...[
+            const SizedBox(height: 8),
+            ..._wagiGrupy.asMap().entries.map((e) => _wagaGrupaRow(e.key, e.value)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () { setState(_addWagaGrupa); },
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Dodaj grupę'),
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _wagaGrupaRow(int idx, _WagaGrupa g) {
+    final il = _pi(g.iloscCtrl.text);
+    final wg = _p(g.wagaCtrl.text);
+    final subtara = il * wg;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          SizedBox(
+            width: 130,
+            child: DropdownButtonFormField<String>(
+              value: g.typ,
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'drew',  child: Text('Drew.')),
+                DropdownMenuItem(value: 'plast', child: Text('Plast.')),
+              ],
+              onChanged: (v) {
+                setState(() => g.typ = v!);
+                _recalc();
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: _NumField('Ilość szt.', g.iloscCtrl)),
+          const SizedBox(width: 8),
+          Expanded(child: _NumField('Waga 1 szt. [kg]', g.wagaCtrl)),
+          if (_wagiGrupy.length > 1)
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: () {
+                setState(() {
+                  g.dispose();
+                  _wagiGrupy.removeAt(idx);
+                });
+                _recalc();
+              },
+            )
+          else
+            const SizedBox(width: 40),
+        ]),
+        if (subtara > 0) ...[
+          const SizedBox(height: 2),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              'TARA grupy ${idx + 1}: ${subtara.toStringAsFixed(0)} kg',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 

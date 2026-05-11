@@ -15,6 +15,17 @@ import '../wsg/wsg_screen.dart' show wsgResetKeyProvider;
 
 // ── Kontrolery odmiany KWG ────────────────────────────────────────────────────
 
+class _WagaGrupa {
+  String typ = 'drew';
+  final iloscCtrl = TextEditingController();
+  final wagaCtrl  = TextEditingController();
+  _WagaGrupa({this.typ = 'drew'});
+  void dispose() { iloscCtrl.dispose(); wagaCtrl.dispose(); }
+  int    get ilosc => int.tryParse(iloscCtrl.text.trim()) ?? 0;
+  double get wagaJedn => double.tryParse(wagaCtrl.text.replaceAll(',', '.').trim()) ?? 0;
+  double get tara => ilosc * wagaJedn;
+}
+
 class _OdmGCtrl {
   final nazwaCtrl     = TextEditingController();
   final wagaNettoCtrl = TextEditingController();
@@ -37,6 +48,9 @@ class _OdmGCtrl {
   bool dataBrak       = false;
   bool zwrotVisible   = false;
   bool mbVisible      = false;
+  // Różne wagi skrzyń per odmiana
+  bool rozneWagi      = false;
+  final List<_WagaGrupa> wagiGrupy = [_WagaGrupa()];
 
   void dispose() {
     for (final c in [nazwaCtrl, wagaNettoCtrl, drewCtrl, plastCtrl,
@@ -45,6 +59,7 @@ class _OdmGCtrl {
                      nrCtrl, drewWagaCtrl, plastWagaCtrl]) {
       c.dispose();
     }
+    for (final g in wagiGrupy) g.dispose();
   }
 }
 
@@ -131,11 +146,31 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
       final dateStr = (isRG && o.dataBrak)
           ? ''
           : '${dataOdm.year}-${dataOdm.month.toString().padLeft(2,'0')}-${dataOdm.day.toString().padLeft(2,'0')}';
-      final drewCnt       = int.tryParse(o.drewCtrl.text.trim()) ?? 0;
-      final plastCnt      = int.tryParse(o.plastCtrl.text.trim()) ?? 0;
+      // Skrzynie: liczba i wagi — z grup jeśli rozneWagi, inaczej z pól
+      final int drewCnt, plastCnt;
+      final double? drewWagaJedn, plastWagaJedn;
+      final List<Map<String, dynamic>> wagiGrupyData;
+      if (o.rozneWagi && o.wagiGrupy.isNotEmpty) {
+        var dIl = 0; var pIl = 0; var dTara = 0.0; var pTara = 0.0;
+        wagiGrupyData = [];
+        for (final g in o.wagiGrupy) {
+          final il = g.ilosc; final wg = g.wagaJedn;
+          wagiGrupyData.add({'typ': g.typ, 'ilosc': il, 'waga': wg});
+          if (g.typ == 'drew') { dIl += il; dTara += il * wg; }
+          else                 { pIl += il; pTara += il * wg; }
+        }
+        drewCnt      = dIl;
+        plastCnt     = pIl;
+        drewWagaJedn  = dIl > 0 ? dTara / dIl : null;
+        plastWagaJedn = pIl > 0 ? pTara / pIl : null;
+      } else {
+        drewCnt       = int.tryParse(o.drewCtrl.text.trim()) ?? 0;
+        plastCnt      = int.tryParse(o.plastCtrl.text.trim()) ?? 0;
+        drewWagaJedn  = double.tryParse(o.drewWagaCtrl.text.replaceAll(',', '.').trim());
+        plastWagaJedn = double.tryParse(o.plastWagaCtrl.text.replaceAll(',', '.').trim());
+        wagiGrupyData = [];
+      }
       final mbDrewCnt     = int.tryParse(o.mbDrewCtrl.text.trim()) ?? 0;
-      final drewWagaJedn  = double.tryParse(o.drewWagaCtrl.text.replaceAll(',', '.').trim());
-      final plastWagaJedn = double.tryParse(o.plastWagaCtrl.text.replaceAll(',', '.').trim());
 
       final delRef = db.collection(AppConstants.colDeliveries).doc(docId);
       batch.set(delRef, {
@@ -179,6 +214,10 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         },
         if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
         if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
+        if (o.rozneWagi && wagiGrupyData.isNotEmpty) ...{
+          'rozne_wagi': true,
+          'wagi_grupy': wagiGrupyData,
+        },
         'createdAt':         FieldValue.serverTimestamp(),
       });
 
@@ -207,6 +246,10 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         },
         if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
         if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
+        if (o.rozneWagi && wagiGrupyData.isNotEmpty) ...{
+          'rozne_wagi': true,
+          'wagi_grupy': wagiGrupyData,
+        },
         'kg_total':        wagaNetto,
         'kg_remaining':    wagaNetto,
         'active':          (drewCnt + plastCnt) > 0,
@@ -618,18 +661,43 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
             required: !isRG,
           ),
           const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: _KwgNumField('Skrzynie drew.', o.drewCtrl)),
-            const SizedBox(width: 8),
-            Expanded(child: _KwgNumField('Skrzynie plast.', o.plastCtrl)),
-          ]),
-          const SizedBox(height: 6),
-          Row(children: [
-            Expanded(child: _KwgNumField('Waga skrzyni drew. [kg]', o.drewWagaCtrl)),
-            const SizedBox(width: 8),
-            Expanded(child: _KwgNumField('Waga skrzyni plast. [kg]', o.plastWagaCtrl)),
-          ]),
-          const SizedBox(height: 8),
+          if (!o.rozneWagi) ...[
+            Row(children: [
+              Expanded(child: _KwgNumField('Skrzynie drew.', o.drewCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _KwgNumField('Skrzynie plast.', o.plastCtrl)),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(child: _KwgNumField('Waga skrzyni drew. [kg]', o.drewWagaCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _KwgNumField('Waga skrzyni plast. [kg]', o.plastWagaCtrl)),
+            ]),
+          ],
+          // Toggle: różne wagi skrzyń
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Czy skrzynie mają różną wagę?',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Zaznacz jeśli skrzynie mają różne wagi jednostkowe',
+                style: TextStyle(fontSize: 11)),
+            value: o.rozneWagi,
+            onChanged: (v) => setState(() => o.rozneWagi = v),
+          ),
+          if (o.rozneWagi) ...[
+            const SizedBox(height: 4),
+            ...o.wagiGrupy.asMap().entries.map((e) => _wagaGrupaRow(o, e.key, e.value)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => o.wagiGrupy.add(_WagaGrupa())),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Dodaj grupę'),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          const SizedBox(height: 4),
           GestureDetector(
             onTap: () => setState(() => o.mbVisible = !o.mbVisible),
             child: Row(children: [
@@ -854,6 +922,54 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         }
       }
     }
+  }
+
+  Widget _wagaGrupaRow(_OdmGCtrl o, int idx, _WagaGrupa g) {
+    final subtara = g.tara;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          SizedBox(
+            width: 120,
+            child: DropdownButtonFormField<String>(
+              value: g.typ,
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'drew',  child: Text('Drew.')),
+                DropdownMenuItem(value: 'plast', child: Text('Plast.')),
+              ],
+              onChanged: (v) => setState(() => g.typ = v!),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: _KwgNumField('Ilość szt.', g.iloscCtrl)),
+          const SizedBox(width: 8),
+          Expanded(child: _KwgNumField('Waga 1 szt. [kg]', g.wagaCtrl)),
+          if (o.wagiGrupy.length > 1)
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: () => setState(() {
+                g.dispose();
+                o.wagiGrupy.removeAt(idx);
+              }),
+            )
+          else
+            const SizedBox(width: 40),
+        ]),
+        if (subtara > 0)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 2),
+            child: Text(
+              'TARA grupy ${idx + 1}: ${subtara.toStringAsFixed(0)} kg',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ),
+      ]),
+    );
   }
 
   void _addOdmiana() => setState(() => _odm.add(_OdmGCtrl()));

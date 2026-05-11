@@ -44,6 +44,7 @@ class KartaEntry {
   final bool isKwg;
   final String createdByName;
   final List<Map<String, String>> modifications;
+  final List<Map<String, dynamic>> wagiGrupy;
 
   const KartaEntry({
     required this.id,
@@ -75,6 +76,7 @@ class KartaEntry {
     this.wagaNettoBrak = false,
     this.createdByName = '',
     this.modifications = const [],
+    this.wagiGrupy = const [],
   });
 
   factory KartaEntry.fromFirestore(String id, Map<String, dynamic> d) => KartaEntry(
@@ -109,6 +111,9 @@ class KartaEntry {
     modifications:  (d['modifications']   as List<dynamic>?)
         ?.map((e) => Map<String, String>.from(
             (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+        .toList() ?? const [],
+    wagiGrupy: (d['wagi_grupy'] as List<dynamic>?)
+        ?.map((e) => Map<String, dynamic>.from(e as Map))
         .toList() ?? const [],
   );
 }
@@ -528,6 +533,24 @@ class _KartaCard extends ConsumerWidget {
                   if (entry.wagaNetto.isNotEmpty)
                     _InfoRow(Icons.scale_outlined,
                         'Netto: ${_fmtKg(entry.wagaNetto)} kg  •  Skrz: ${entry.skrzynie}'),
+                  if (entry.wagiGrupy.isNotEmpty) ...[
+                    ...() {
+                      final drew  = entry.wagiGrupy.where((g) => g['typ'] == 'drew').toList();
+                      final plast = entry.wagiGrupy.where((g) => g['typ'] == 'plast').toList();
+                      final rows = <Widget>[];
+                      for (int i = 0; i < drew.length; i++) {
+                        final g = drew[i];
+                        rows.add(_InfoRow(Icons.inventory_2_outlined,
+                            'Ilość skrzyń drewnianych #${i + 1}: ${g['ilosc']}  •  Waga skrzyni drewnianej #${i + 1}: ${g['waga']} kg'));
+                      }
+                      for (int i = 0; i < plast.length; i++) {
+                        final g = plast[i];
+                        rows.add(_InfoRow(Icons.inventory_2_outlined,
+                            'Ilość skrzyń plastikowych #${i + 1}: ${g['ilosc']}  •  Waga skrzyni plastikowej #${i + 1}: ${g['waga']} kg'));
+                      }
+                      return rows;
+                    }(),
+                  ],
                 ],
               ),
             ),
@@ -1154,10 +1177,14 @@ class _ModRow extends StatelessWidget {
   final String changes;
   const _ModRow({required this.at, required this.by, required this.changes});
 
-  // Wyciąga samą godzinę z "dd.MM.yyyy HH:mm:ss" → "HH:mm:ss"
   String get _timeOnly {
     final parts = at.split(' ');
     return parts.length >= 2 ? parts.last : at;
+  }
+
+  String get _dateOnly {
+    final parts = at.split(' ');
+    return parts.isNotEmpty ? parts.first : at;
   }
 
   @override
@@ -1180,9 +1207,8 @@ class _ModRow extends StatelessWidget {
               ],
             ),
           ),
-          // Pełna data poniżej (mniejsza)
-          Text(at,
-              style: const TextStyle(fontSize: 11, color: AppTheme.borderLight)),
+          Text(_dateOnly,
+              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
         ]),
       );
 }
