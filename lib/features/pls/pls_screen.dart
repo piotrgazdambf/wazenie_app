@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../core/offline/hive_buffer.dart';
@@ -518,77 +520,10 @@ class _PlsCard extends ConsumerWidget {
   }
 
   Future<void> _rozlicz(BuildContext context, WidgetRef ref) async {
-    final confirm = await showDialog<bool>(
+    await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Rozliczenie dostawy'),
-        content: Text(
-            'Czy rozliczyć LOT ${entry.lot}?\n'
-            'Zostanie dodane Zejście do MCR i status zmieni się na ROZLICZONO.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Anuluj')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Rozlicz')),
-        ],
-      ),
+      builder: (_) => _RozliczDialog(entry: entry, ref: ref),
     );
-    if (confirm != true) return;
-
-    final buffer = ref.read(hiveBufferProvider);
-    try {
-      await FirebaseFirestore.instance
-          .collection(AppConstants.colDeliveries)
-          .doc(entry.id)
-          .update({'status': 'ROZLICZONO'});
-
-      final now    = DateTime.now();
-      final mcrId  = 'mcr_zejscie_${now.millisecondsSinceEpoch}';
-      final mcrData = {
-        'id':           mcrId,
-        'lot':          entry.lot,
-        'czas':         '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}',
-        'akcja':        'Zejscie',
-        'waga_netto':   entry.wagaNetto,
-        'owoc':         entry.owoc,
-        'odmiana':      entry.odmiana,
-        'przeznaczenie':entry.przeznaczenie,
-        'status':       'pending',
-        'createdAt':    now.toIso8601String(),
-      };
-      try {
-        await FirebaseFirestore.instance
-            .collection(AppConstants.colMcrQueue)
-            .doc(mcrId)
-            .set({...mcrData, 'createdAt': FieldValue.serverTimestamp()});
-      } catch (_) {
-        await buffer.enqueue(OfflineEntry(
-          id: mcrId,
-          type: 'mcr_zejscie',
-          data: mcrData,
-          createdAt: now,
-        ));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Błąd: $e'),
-              backgroundColor: AppTheme.errorRed),
-        );
-      }
-      return;
-    }
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Rozliczono + Zejście do MCR'),
-          backgroundColor: AppTheme.successGreen,
-        ),
-      );
-    }
   }
 
   String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -1135,6 +1070,222 @@ class _WpisWageButton extends StatelessWidget {
     );
   }
 }
+
+// ── Dialog rozliczenia (otwierany z PLS) ─────────────────────────────────────
+
+class _RozliczDialog extends StatefulWidget {
+  final PlsEntry entry;
+  final WidgetRef ref;
+  const _RozliczDialog({required this.entry, required this.ref});
+
+  @override
+  State<_RozliczDialog> createState() => _RozliczDialogState();
+}
+
+class _RozliczDialogState extends State<_RozliczDialog> {
+  final _formKey    = GlobalKey<FormState>();
+  final _naCoCtrl   = TextEditingController();
+  final _kgCtrl     = TextEditingController();
+  final _skrCtrl    = TextEditingController();
+  final _odmianaCtrl = TextEditingController();
+  DateTime _data    = DateTime.now();
+  bool _saving      = false;
+
+  static const _naCo = ['Obieranie', 'Sok', 'Gruszka', 'Rylex', 'Grójecka', 'Odpad', 'Burak'];
+
+  @override
+  void initState() {
+    super.initState();
+    _odmianaCtrl.text = widget.entry.odmiana;
+    _kgCtrl.text      = widget.entry.wagaNetto;
+  }
+
+  @override
+  void dispose() {
+    _naCoCtrl.dispose();
+    _kgCtrl.dispose();
+    _skrCtrl.dispose();
+    _odmianaCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _data,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _data = picked);
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+
+    final e       = widget.entry;
+    final session = widget.ref.read(currentSessionProvider);
+    final buffer  = widget.ref.read(hiveBufferProvider);
+    final db      = FirebaseFirestore.instance;
+    final kg      = double.tryParse(_kgCtrl.text.replaceAll(',', '.')) ?? 0;
+    final skr     = int.tryParse(_skrCtrl.text) ?? 0;
+
+    try {
+      // 1. Wpis rozliczenia
+      await db.collection('rozliczone').add({
+        'na_co':           _naCoCtrl.text.trim(),
+        'data':            DateFormat('dd.MM.yyyy').format(_data),
+        'lot':             e.lot,
+        'odmiana':         _odmianaCtrl.text.trim(),
+        'kg':              kg,
+        'skrzyny':         skr,
+        'created_at':      FieldValue.serverTimestamp(),
+        'created_by_name': session?.user.name ?? '',
+      });
+
+      // 2. Status ROZLICZONO
+      await db.collection(AppConstants.colDeliveries)
+          .doc(e.id)
+          .update({'status': 'ROZLICZONO'});
+
+      // 3. MCR Zejście
+      final now   = DateTime.now();
+      final mcrId = 'mcr_zejscie_${now.millisecondsSinceEpoch}';
+      final mcrData = {
+        'id':           mcrId,
+        'lot':          e.lot,
+        'czas':         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+        'akcja':        'Zejscie',
+        'waga_netto':   e.wagaNetto,
+        'owoc':         e.owoc,
+        'odmiana':      e.odmiana,
+        'przeznaczenie':e.przeznaczenie,
+        'status':       'pending',
+        'createdAt':    now.toIso8601String(),
+      };
+      try {
+        await db.collection(AppConstants.colMcrQueue)
+            .doc(mcrId)
+            .set({...mcrData, 'createdAt': FieldValue.serverTimestamp()});
+      } catch (_) {
+        await buffer.enqueue(OfflineEntry(
+          id: mcrId, type: 'mcr_zejscie', data: mcrData, createdAt: now,
+        ));
+      }
+
+      if (mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Rozliczono + Zejście do MCR'),
+          backgroundColor: AppTheme.successGreen,
+        ));
+      }
+    } catch (err) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Błąd: $err'), backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Dodaj wpis rozliczenia'),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Na co',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6, runSpacing: 4,
+                  children: _naCo.map((s) => ActionChip(
+                    label: Text(s, style: const TextStyle(fontSize: 12)),
+                    onPressed: () => setState(() => _naCoCtrl.text = s),
+                  )).toList(),
+                ),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _naCoCtrl,
+                  decoration: const InputDecoration(labelText: 'Na co (np. obieranie, sok)', isDense: true),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Wymagane' : null,
+                ),
+                const SizedBox(height: 14),
+
+                // LOT — read-only, pre-filled
+                InputDecorator(
+                  decoration: const InputDecoration(labelText: 'LOT / Nr dostawy', isDense: true),
+                  child: Text(widget.entry.lot,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 14, color: AppTheme.primaryDark)),
+                ),
+                const SizedBox(height: 14),
+
+                InkWell(
+                  onTap: _pickDate,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Data', isDense: true,
+                      suffixIcon: Icon(Icons.calendar_today, size: 18),
+                    ),
+                    child: Text(DateFormat('dd.MM.yyyy').format(_data)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                TextFormField(
+                  controller: _kgCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  decoration: const InputDecoration(labelText: 'Kg', isDense: true, suffixText: 'kg'),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Wymagane';
+                    if ((double.tryParse(v.replaceAll(',', '.')) ?? 0) <= 0) return 'Podaj wartość > 0';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+
+                TextFormField(
+                  controller: _skrCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'Skrzynie (opcjonalnie)', isDense: true),
+                ),
+                const SizedBox(height: 14),
+
+                TextFormField(
+                  controller: _odmianaCtrl,
+                  decoration: const InputDecoration(labelText: 'Odmiana (opcjonalnie)', isDense: true),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anuluj')),
+        ElevatedButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Zapisz'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _EmptyView extends StatelessWidget {
   const _EmptyView();
