@@ -33,6 +33,7 @@ class KartaEntry {
   final String wagaA2Roz;
   final String kwgType;
   final bool wagaNettoBrak;
+  final String dataWsg;
   final String brix;
   final String odpad;
   final String twardosc;
@@ -74,6 +75,7 @@ class KartaEntry {
     required this.isKwg,
     this.kwgType = '',
     this.wagaNettoBrak = false,
+    this.dataWsg = '',
     this.createdByName = '',
     this.modifications = const [],
     this.wagiGrupy = const [],
@@ -107,6 +109,7 @@ class KartaEntry {
     isKwg:        d['is_kwg'] as bool? ?? false,
     kwgType:      d['kwg_type'] as String? ?? '',
     wagaNettoBrak:  d['waga_netto_brak']  as bool?   ?? false,
+    dataWsg:        d['data_wsg']         as String? ?? '',
     createdByName:  d['createdByName']    as String? ?? '',
     modifications:  (d['modifications']   as List<dynamic>?)
         ?.map((e) => Map<String, String>.from(
@@ -228,7 +231,11 @@ class _KartyScreenState extends ConsumerState<KartyScreen>
                     if (items.isEmpty) return const _EmptyView();
                     final grouped = <String, List<KartaEntry>>{};
                     for (final e in items) {
-                      final key = e.lot.replaceAll(RegExp(r'\d+$'), '');
+                      final baseLot = e.lot.replaceAll(RegExp(r'\d+$'), '');
+                      // RG: różne WSG z tym samym nr dostawy → osobne grupy
+                      final key = (e.kwgType.isNotEmpty && e.dataWsg.isNotEmpty)
+                          ? '${baseLot}_${e.dataWsg}'
+                          : baseLot;
                       grouped.putIfAbsent(key, () => []);
                       grouped[key]!.add(e);
                     }
@@ -325,8 +332,28 @@ class _DeliveryGroupState extends ConsumerState<_DeliveryGroup> {
                       Text(owocLabel, style: const TextStyle(fontSize: 13)),
                       Text(e0.dostawca,
                           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                      Text('${_fmtDate(e0.data)}  •  ${totalNetto.toStringAsFixed(0)} kg  •  ${widget.entries.length} ${widget.entries.length == 1 ? 'odmiana' : 'odmiany'}',
-                          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                      Builder(builder: (_) {
+                    final isRG = e0.kwgType.isNotEmpty;
+                    final wsgDate = isRG && e0.dataWsg.isNotEmpty
+                        ? _fmtDate(e0.dataWsg)
+                        : _fmtDate(e0.data);
+                    final nOdm = widget.entries.length;
+                    final odmStr = nOdm == 1 ? 'odmiana' : 'odmiany';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$wsgDate  •  ${totalNetto.toStringAsFixed(0)} kg  •  $nOdm $odmStr',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                        ),
+                        if (isRG)
+                          Text(
+                            'Daty dostaw — rozwiń odmiany',
+                            style: const TextStyle(fontSize: 10, color: AppTheme.primaryLight),
+                          ),
+                      ],
+                    );
+                  }),
                     ],
                   ),
                 ),
@@ -528,8 +555,15 @@ class _KartaCard extends ConsumerWidget {
                   _InfoRow(Icons.eco_outlined,
                       '${_cap(entry.owoc)}${entry.odmiana.isNotEmpty ? " • ${entry.odmiana}" : ""}'),
                   _InfoRow(Icons.business_outlined, entry.dostawca),
-                  _InfoRow(Icons.calendar_today_outlined,
-                      '${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
+                  if (entry.kwgType.isNotEmpty && entry.dataWsg.isNotEmpty) ...[
+                    _InfoRow(Icons.calendar_today_outlined,
+                        'KW: ${_fmtDate(entry.dataWsg)}'),
+                    if (entry.data.isNotEmpty)
+                      _InfoRow(Icons.local_shipping_outlined,
+                          'Dostarczone: ${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
+                  ] else
+                    _InfoRow(Icons.calendar_today_outlined,
+                        '${_fmtDate(entry.data)}  •  Dostawa #${entry.nrDostawy}'),
                   if (entry.wagaNetto.isNotEmpty)
                     _InfoRow(Icons.scale_outlined,
                         'Netto: ${_fmtKg(entry.wagaNetto)} kg  •  Skrz: ${entry.skrzynie}'),

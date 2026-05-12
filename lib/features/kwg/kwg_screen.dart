@@ -101,9 +101,7 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
           ? o.nrCtrl.text.trim()
           : _lotBaseCtrl.text.trim();
 
-  /// Zwraca unikalny LOT dla każdej odmiany.
-  /// Gdy kilka odmian ma ten sam nr dostawy, pierwsza dostaje bazowy LOT,
-  /// kolejne dostają suffix 2, 3, itd. (np. "81/123/G-O", "81/123/G-O2").
+  /// Podgląd LOT-ów (synchroniczny) — używany np. przy drukowaniu etykiet przed zapisem.
   List<String> _computeAllLots() {
     if (!isRG) {
       final lotBase = _lotBaseCtrl.text.trim().isNotEmpty
@@ -112,25 +110,57 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
       return List.generate(_odm.length,
           (i) => _odm.length <= 1 || i == 0 ? lotBase : '$lotBase${i + 1}');
     }
-
-    // Policz ile odmian dzieli ten sam nr dostawy
     final nrCount = <String, int>{};
     for (final o in _odm) {
       final nr = _nrForOdm(o);
       nrCount[nr] = (nrCount[nr] ?? 0) + 1;
     }
-
-    // Przypisz unikalne LOT-y
     final nrIndex = <String, int>{};
     return List.generate(_odm.length, (i) {
-      final o   = _odm[i];
-      final nr  = _nrForOdm(o);
+      final o    = _odm[i];
+      final nr   = _nrForOdm(o);
       final base = '$nr/${widget.data.kwgType}-${widget.data.przeznaczenieKod}';
       final total = nrCount[nr] ?? 1;
       final idx   = nrIndex[nr] ?? 0;
       nrIndex[nr] = idx + 1;
       return total <= 1 || idx == 0 ? base : '$base${idx + 1}';
     });
+  }
+
+  /// Rozwiązuje unikalne LOT-y sprawdzając Firestore — każdy LOT musi być wolny
+  /// (nie istnieje w bazie) i nie może się powtarzać w ramach bieżącego formularza.
+  Future<List<String>> _resolveAllLots(FirebaseFirestore db) async {
+    final usedLots = <String>{};
+    final resolved = <String>[];
+
+    for (final o in _odm) {
+      final String baseLot;
+      if (isRG) {
+        baseLot = '${_nrForOdm(o)}/${widget.data.kwgType}-${widget.data.przeznaczenieKod}';
+      } else {
+        baseLot = _lotBaseCtrl.text.trim().isNotEmpty
+            ? _lotBaseCtrl.text.trim()
+            : widget.data.lotBase;
+      }
+
+      // Szukaj pierwszego wolnego: baseLot, baseLot2, baseLot3, ...
+      String candidate = baseLot;
+      int suffix = 1;
+      while (true) {
+        if (!usedLots.contains(candidate)) {
+          final docId = candidate.replaceAll('/', '_');
+          final snap  = await db.collection(AppConstants.colDeliveries).doc(docId).get();
+          if (!snap.exists) break;
+        }
+        suffix++;
+        candidate = '$baseLot$suffix';
+      }
+
+      resolved.add(candidate);
+      usedLots.add(candidate);
+    }
+
+    return resolved;
   }
 
   @override
@@ -157,7 +187,8 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
 
     final isRG    = d.kwgType.isNotEmpty; // Rylex lub Grójecka
     final total   = _odm.length;
-    final allLots = _computeAllLots();
+    // Async: sprawdzamy Firestore żeby nie nadpisać istniejących kart
+    final allLots = await _resolveAllLots(db);
     final docIds  = <String>[];
     for (int i = 0; i < total; i++) {
       final o   = _odm[i];
