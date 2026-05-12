@@ -96,12 +96,41 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
 
   bool get isRG => widget.data.kwgType.isNotEmpty;
 
-  /// Pełny LOT dla odmiany Rylex/Grójecka
-  String _lotForOdmRG(_OdmGCtrl o) {
-    final nr = o.nrCtrl.text.trim().isNotEmpty
-        ? o.nrCtrl.text.trim()
-        : _lotBaseCtrl.text.trim();
-    return '$nr/${widget.data.kwgType}-${widget.data.przeznaczenieKod}';
+  String _nrForOdm(_OdmGCtrl o) =>
+      o.nrCtrl.text.trim().isNotEmpty
+          ? o.nrCtrl.text.trim()
+          : _lotBaseCtrl.text.trim();
+
+  /// Zwraca unikalny LOT dla każdej odmiany.
+  /// Gdy kilka odmian ma ten sam nr dostawy, pierwsza dostaje bazowy LOT,
+  /// kolejne dostają suffix 2, 3, itd. (np. "81/123/G-O", "81/123/G-O2").
+  List<String> _computeAllLots() {
+    if (!isRG) {
+      final lotBase = _lotBaseCtrl.text.trim().isNotEmpty
+          ? _lotBaseCtrl.text.trim()
+          : widget.data.lotBase;
+      return List.generate(_odm.length,
+          (i) => _odm.length <= 1 || i == 0 ? lotBase : '$lotBase${i + 1}');
+    }
+
+    // Policz ile odmian dzieli ten sam nr dostawy
+    final nrCount = <String, int>{};
+    for (final o in _odm) {
+      final nr = _nrForOdm(o);
+      nrCount[nr] = (nrCount[nr] ?? 0) + 1;
+    }
+
+    // Przypisz unikalne LOT-y
+    final nrIndex = <String, int>{};
+    return List.generate(_odm.length, (i) {
+      final o   = _odm[i];
+      final nr  = _nrForOdm(o);
+      final base = '$nr/${widget.data.kwgType}-${widget.data.przeznaczenieKod}';
+      final total = nrCount[nr] ?? 1;
+      final idx   = nrIndex[nr] ?? 0;
+      nrIndex[nr] = idx + 1;
+      return total <= 1 || idx == 0 ? base : '$base${idx + 1}';
+    });
   }
 
   @override
@@ -127,15 +156,12 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
     final batch   = db.batch();
 
     final isRG    = d.kwgType.isNotEmpty; // Rylex lub Grójecka
-    final lotBase = _lotBaseCtrl.text.trim().isNotEmpty ? _lotBaseCtrl.text.trim() : d.lotBase;
     final total   = _odm.length;
+    final allLots = _computeAllLots();
     final docIds  = <String>[];
     for (int i = 0; i < total; i++) {
-      final o      = _odm[i];
-      // LOT: dla RG - indywidualny numer, dla innych - standardowy
-      final lot    = isRG
-          ? _lotForOdmRG(o)
-          : (total <= 1 || i == 0 ? lotBase : '$lotBase${i + 1}');
+      final o   = _odm[i];
+      final lot = allLots[i];
       final docId  = lot.replaceAll('/', '_');
       docIds.add(docId);
       final wagaNetto = double.tryParse(o.wagaNettoCtrl.text.replaceAll(',', '.').trim()) ?? 0;
@@ -177,7 +203,7 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'id':                lot,
         'lot':               lot,
         'data':              dateStr,
-        'nr_dostawy':        isRG ? (o.nrCtrl.text.trim().isNotEmpty ? o.nrCtrl.text.trim() : lot) : d.nrDostawy,
+        'nr_dostawy':        isRG ? _nrForOdm(o) : d.nrDostawy,
         'dostawca':          d.dostawcaNazwa,
         'dostawca_kod':      d.dostawcaKod,
         'przeznaczenie':     d.przeznaczenie,
@@ -806,11 +832,8 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
       ));
       return;
     }
-    final d       = widget.data;
-    final lotBase = _lotBaseCtrl.text.trim().isNotEmpty ? _lotBaseCtrl.text.trim() : d.lotBase;
-    final lot     = isRG
-        ? _lotForOdmRG(o)
-        : (_odm.length <= 1 || idx == 0 ? lotBase : '$lotBase${idx + 1}');
+    final d   = widget.data;
+    final lot = _computeAllLots()[idx];
     final dateStr = '${d.data.day.toString().padLeft(2,'0')}.${d.data.month.toString().padLeft(2,'0')}.${d.data.year}';
     final dataDostarczenia = (isRG && !o.dataBrak)
         ? '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}'
@@ -832,15 +855,13 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
 
   Future<void> _showSaveDialog() async {
     final d       = widget.data;
-    final lotBase = _lotBaseCtrl.text.trim();
     final total   = _odm.length;
     final dateStr = '${d.data.day.toString().padLeft(2,'0')}.${d.data.month.toString().padLeft(2,'0')}.${d.data.year}';
+    final allLots = _computeAllLots();
 
     final labels = List.generate(total, (i) {
-      final o = _odm[i];
-      final lot = isRG
-          ? _lotForOdmRG(o)
-          : (total <= 1 || i == 0 ? lotBase : '$lotBase${i + 1}');
+      final o   = _odm[i];
+      final lot = allLots[i];
       final dataDostarczenia = (isRG && !o.dataBrak)
           ? '${o.dataDostawy.day.toString().padLeft(2,'0')}.${o.dataDostawy.month.toString().padLeft(2,'0')}.${o.dataDostawy.year}'
           : '';
