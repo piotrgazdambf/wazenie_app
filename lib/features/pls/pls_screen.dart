@@ -17,6 +17,13 @@ String _fmtKg(String s) {
   return v.round().toString();
 }
 
+String _fmtDate(String d) {
+  if (d.length == 10 && d[4] == '-' && d[7] == '-') {
+    return '${d.substring(8)}.${d.substring(5, 7)}.${d.substring(0, 4)}';
+  }
+  return d;
+}
+
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 class PlsEntry {
@@ -35,6 +42,8 @@ class PlsEntry {
   final String owoc;
   final String status;
   final bool isKwg;
+  final String kwgType;
+  final String dataWsg;
   final String brix;
   final String odpad;
   final String twardosc;
@@ -63,6 +72,8 @@ class PlsEntry {
     required this.owoc,
     required this.status,
     this.isKwg = false,
+    this.kwgType = '',
+    this.dataWsg = '',
     this.brix = '',
     this.odpad = '',
     this.twardosc = '',
@@ -94,6 +105,8 @@ class PlsEntry {
         owoc:         d['owoc'] as String? ?? '',
         status:       d['status'] as String? ?? '',
         isKwg:        d['is_kwg'] as bool? ?? false,
+        kwgType:      d['kwg_type'] as String? ?? '',
+        dataWsg:      d['data_wsg'] as String? ?? '',
         brix:         d['brix'] as String? ?? '',
         odpad:        d['odpad'] as String? ?? '',
         twardosc:     d['twardosc'] as String? ?? '',
@@ -208,7 +221,10 @@ class _PlsScreenState extends ConsumerState<PlsScreen>
                     if (items.isEmpty) return const _EmptyView();
                     final grouped = <String, List<PlsEntry>>{};
                     for (final e in items) {
-                      final key = e.lot.replaceAll(RegExp(r'\d+$'), '');
+                      final baseLot = e.lot.replaceAll(RegExp(r'\d+$'), '');
+                      final key = (e.kwgType.isNotEmpty && e.dataWsg.isNotEmpty)
+                          ? '${baseLot}_${e.dataWsg}'
+                          : baseLot;
                       grouped.putIfAbsent(key, () => []);
                       grouped[key]!.add(e);
                     }
@@ -218,8 +234,9 @@ class _PlsScreenState extends ConsumerState<PlsScreen>
                       itemCount: keys.length,
                       itemBuilder: (ctx, i) {
                         final entries = grouped[keys[i]]!;
+                        final displayLot = entries.first.lot.replaceAll(RegExp(r'\d+$'), '');
                         if (entries.length == 1) return _PlsCard(entry: entries[0]);
-                        return _PlsGroup(baseLot: keys[i], entries: entries);
+                        return _PlsGroup(baseLot: displayLot, entries: entries);
                       },
                     );
                   }
@@ -280,8 +297,19 @@ class _PlsGroupState extends State<_PlsGroup> {
                   const SizedBox(height: 3),
                   Text('${e0.owoc}${odmiany.isNotEmpty ? "  •  ${odmiany.join(" / ")}" : ""}',
                       style: const TextStyle(fontSize: 13)),
-                  Text('${e0.dostawca}  •  ${e0.data}  •  ${totalNetto.round()} kg  •  ${widget.entries.length} odm.',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  Builder(builder: (_) {
+                    final isRG = e0.kwgType.isNotEmpty;
+                    final dateStr = isRG && e0.dataWsg.isNotEmpty
+                        ? 'KW: ${_fmtDate(e0.dataWsg)}'
+                        : _fmtDate(e0.data);
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${e0.dostawca}  •  $dateStr  •  ${totalNetto.round()} kg  •  ${widget.entries.length} odm.',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                      if (isRG)
+                        const Text('Daty dostaw — rozwiń odmiany',
+                            style: TextStyle(fontSize: 10, color: AppTheme.primaryLight)),
+                    ]);
+                  }),
                 ])),
                 Icon(_expanded ? Icons.expand_less : Icons.expand_more,
                     color: AppTheme.textSecondary),
@@ -360,8 +388,13 @@ class _PlsCard extends ConsumerWidget {
             // Dostawca + data
             if (entry.dostawca.isNotEmpty)
               _InfoRow(Icons.business_outlined, entry.dostawca),
-            if (entry.data.isNotEmpty)
-              _InfoRow(Icons.calendar_today_outlined, '${entry.data}  •  ${entry.lot}'),
+            if (entry.kwgType.isNotEmpty && entry.dataWsg.isNotEmpty) ...[
+              _InfoRow(Icons.calendar_today_outlined, 'KW: ${_fmtDate(entry.dataWsg)}'),
+              if (entry.data.isNotEmpty)
+                _InfoRow(Icons.local_shipping_outlined,
+                    'Dostarczone: ${_fmtDate(entry.data)}  •  #${entry.nrDostawy}'),
+            ] else if (entry.data.isNotEmpty)
+              _InfoRow(Icons.calendar_today_outlined, '${_fmtDate(entry.data)}  •  ${entry.lot}'),
 
             // Skrzynie + waga
             if (entry.skrzynie.isNotEmpty || entry.wagaNetto.isNotEmpty)

@@ -244,7 +244,7 @@ class _KartyScreenState extends ConsumerState<KartyScreen>
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
                       itemCount: keys.length,
                       itemBuilder: (ctx, i) => _DeliveryGroup(
-                        baseLot: keys[i],
+                        baseLot: grouped[keys[i]]!.first.lot.replaceAll(RegExp(r'\d+$'), ''),
                         entries: grouped[keys[i]]!,
                         isAdmin: isAdmin,
                         userName: userName,
