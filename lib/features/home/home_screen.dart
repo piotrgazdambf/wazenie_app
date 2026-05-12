@@ -63,6 +63,13 @@ class HomeScreen extends ConsumerWidget {
                     color: const Color(0xFF0F766E),
                     onTap: () => context.go('/karty'),
                   ),
+                  _ModuleCard(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'Rozliczone',
+                    subtitle: 'Co poszło na co, ile zostało z dostawy',
+                    color: const Color(0xFFD97706),
+                    onTap: () => context.go('/rozliczone'),
+                  ),
                   const SizedBox(height: 12),
 
                   _SectionLabel('Magazyn'),

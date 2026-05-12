@@ -18,6 +18,7 @@ import '../features/ps/ps_screen.dart';
 import '../features/skrzynie/skrzynie_screen.dart';
 import '../features/stany/stany_screen.dart';
 import '../features/karty/karty_screen.dart';
+import '../features/rozliczone/rozliczone_screen.dart';
 import '../features/wsg/wsg_screen.dart';
 
 // ── Notifier do odświeżania routera gdy zmienią się providery ────────────────
@@ -101,6 +102,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/skrzynie', builder: (_, __) => const SkrzynieScreen()),
       GoRoute(path: '/ps', builder: (_, __) => const PsScreen()),
       GoRoute(path: '/karty', builder: (_, __) => const KartyScreen()),
+      GoRoute(path: '/rozliczone', builder: (_, __) => const RozliczoneScreen()),
       GoRoute(path: '/admin/users', builder: (_, __) => const UsersScreen()),
       GoRoute(path: '/admin/sync', builder: (_, __) => const SyncScreen()),
       GoRoute(path: '/admin/catalog', builder: (_, __) => const CatalogScreen()),
