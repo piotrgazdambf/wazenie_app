@@ -186,7 +186,7 @@ class _DyspozytoPanel extends StatefulWidget {
 }
 
 class _DyspozytooPanelState extends State<_DyspozytoPanel> {
-  bool _oczekujaceExpanded = true;
+  bool _oczekujaceExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +287,7 @@ class _OczekujaceAccordion extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: kSkanerAccent,
+                          color: Colors.redAccent,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
