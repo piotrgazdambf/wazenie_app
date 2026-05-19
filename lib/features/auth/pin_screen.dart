@@ -183,11 +183,12 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   Widget _buildSelectUser() {
     final usersAsync = ref.watch(usersListProvider);
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          const SizedBox(height: 48),
           const Icon(Icons.scale, color: Colors.white, size: 56),
           const SizedBox(height: 12),
           const Text(
@@ -209,7 +210,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
           ),
           const SizedBox(height: 32),
           _SkanerButton(onTap: () => context.go('/skaner')),
-          const SizedBox(height: 16),
+          const SizedBox(height: 32),
         ],
       ),
     );
