@@ -340,7 +340,7 @@ class _SkanerButton extends StatelessWidget {
                   Text(
                     'SKANER',
                     style: TextStyle(
-                      color: Color(0xFF52B788),
+                      color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
@@ -353,7 +353,7 @@ class _SkanerButton extends StatelessWidget {
                 ],
               ),
               SizedBox(width: 16),
-              Icon(Icons.chevron_right, color: Color(0xFF2D6A4F), size: 28),
+              Icon(Icons.chevron_right, color: Color(0xFF52B788), size: 28),
             ],
           ),
         ),

@@ -256,7 +256,6 @@ class _OczekujaceTab extends StatelessWidget {
       stream: FirebaseFirestore.instance
           .collection('skaner_wnioski')
           .where('status', isEqualTo: 'oczekujacy')
-          .orderBy('created_at', descending: true)
           .snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
@@ -266,7 +265,12 @@ class _OczekujaceTab extends StatelessWidget {
           return Center(child: Text('Błąd: ${snap.error}',
               style: const TextStyle(color: Colors.red)));
         }
-        final docs = snap.data?.docs ?? [];
+        final docs = (snap.data?.docs ?? [])
+          ..sort((a, b) {
+            final aMs = ((a.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+            final bMs = ((b.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+            return bMs.compareTo(aMs);
+          });
         if (docs.isEmpty) {
           return const Center(
             child: Column(

@@ -214,6 +214,40 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            // ── Baner gotowości do skanowania ────────────────────────────────
+            if (_delivery == null && !_loading) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  color: kSkanerCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: kSkanerAccent, width: 2),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.qr_code_scanner, color: kSkanerAccent, size: 52),
+                    SizedBox(height: 10),
+                    Text(
+                      'GOTOWY DO SKANOWANIA',
+                      style: TextStyle(
+                        color: kSkanerAccent,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Skieruj skaner na kod LOT dostawy',
+                      style: TextStyle(color: kSkanerTextSec, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // ── Pole skanowania LOT ──────────────────────────────────────────
             _SectionLabel('SKANUJ KOD / LOT DOSTAWY'),
             const SizedBox(height: 8),
@@ -223,7 +257,7 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
               autofocus: true,
               style: const TextStyle(color: Colors.white, fontSize: 16),
               decoration: InputDecoration(
-                hintText: 'Przyłóż skaner lub wpisz LOT...',
+                hintText: 'Zeskanuj lub wpisz LOT...',
                 hintStyle: const TextStyle(color: kSkanerTextSec),
                 filled: true,
                 fillColor: kSkanerCard,
