@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 
 import '../../core/auth/pin_auth_service.dart';
+import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../pls/pls_screen.dart';
 
@@ -233,8 +234,16 @@ class _EntryTile extends StatelessWidget {
             if (isAdmin) ...[
               const SizedBox(width: 4),
               IconButton(
+                icon: const Icon(Icons.undo, color: AppTheme.warningOrange, size: 20),
+                tooltip: 'Cofnij rozliczenie',
+                onPressed: () => _cofnij(context),
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
                 icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20),
-                onPressed: () => _delete(context, entry.id),
+                tooltip: 'Usuń tylko wpis',
+                onPressed: () => _delete(context),
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints(),
               ),
@@ -245,12 +254,13 @@ class _EntryTile extends StatelessWidget {
     );
   }
 
-  Future<void> _delete(BuildContext context, String id) async {
+  // Usuwa tylko wpis z rozliczone (bez resetowania dostawy)
+  Future<void> _delete(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Usuń wpis'),
-        content: const Text('Czy na pewno chcesz usunąć ten wpis?'),
+        content: const Text('Usuwa tylko ten wpis z listy. Status dostawy pozostaje bez zmian.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
           ElevatedButton(
@@ -262,7 +272,68 @@ class _EntryTile extends StatelessWidget {
       ),
     );
     if (ok == true) {
-      await FirebaseFirestore.instance.collection(_kColRozliczone).doc(id).delete();
+      await FirebaseFirestore.instance.collection(_kColRozliczone).doc(entry.id).delete();
+    }
+  }
+
+  // Pełne cofnięcie: usuwa wpis + resetuje status dostawy + usuwa MCR Zejście
+  Future<void> _cofnij(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cofnij rozliczenie'),
+        content: Text(
+          'To cofnie:\n'
+          '• wpis rozliczenia (${entry.lot})\n'
+          '• status dostawy → PRZESŁANO\n'
+          '• wpis MCR Zejście\n\n'
+          'Czy na pewno?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Anuluj'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.warningOrange),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cofnij rozliczenie'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final db = FirebaseFirestore.instance;
+
+    // 1. Usuń wpis rozliczenia
+    await db.collection(_kColRozliczone).doc(entry.id).delete();
+
+    // 2. Reset statusu dostawy → PRZESŁANO
+    try {
+      final docId = entry.lot.replaceAll('/', '_');
+      await db.collection(AppConstants.colDeliveries).doc(docId).update({'status': 'PRZESŁANO'});
+    } catch (_) {}
+
+    // 3. Usuń wpis(y) MCR Zejście dla tego LOT
+    try {
+      final snap = await db
+          .collection(AppConstants.colMcrQueue)
+          .where('lot', isEqualTo: entry.lot)
+          .where('akcja', isEqualTo: 'Zejscie')
+          .get();
+      for (final doc in snap.docs) {
+        await doc.reference.delete();
+      }
+    } catch (_) {}
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Rozliczenie cofnięte'),
+          backgroundColor: AppTheme.warningOrange,
+        ),
+      );
     }
   }
 }
