@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
@@ -171,7 +172,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -237,7 +238,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
             indicatorColor: Colors.white,
-            tabs: const [Tab(text: 'Stany'), Tab(text: 'Dostawcy')],
+            tabs: const [Tab(text: 'Stany'), Tab(text: 'Dostawcy'), Tab(text: 'Akcje')],
           ),
         ),
         body: Column(
@@ -302,6 +303,8 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
                     error: (e, _) => _ErrorView(message: e.toString()),
                     data: (allEntries) => _DostawcyView(entries: allEntries),
                   ),
+                  // ── Tab 3: Akcje ──────────────────────────────────────
+                  const _AkcjeView(),
                 ],
               ),
             ),
@@ -993,6 +996,143 @@ class _EmptyView extends StatelessWidget {
           ],
         ),
       );
+}
+
+// ── Zakładka Akcje (podgląd zejść ze skanera) ─────────────────────────────────
+
+class _AkcjeView extends StatelessWidget {
+  const _AkcjeView();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('skaner_zejscia')
+          .snapshots(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return _ErrorView(message: snap.error.toString());
+        }
+        final docs = (snap.data?.docs ?? [])
+          ..sort((a, b) {
+            final aMs = ((a.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+            final bMs = ((b.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+            return bMs.compareTo(aMs);
+          });
+
+        if (docs.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.swap_vert, size: 48, color: AppTheme.borderLight),
+                SizedBox(height: 12),
+                Text('Brak akcji', style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
+                SizedBox(height: 4),
+                Text('Zejścia ze skanera pojawią się tutaj',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+          itemCount: docs.length,
+          itemBuilder: (_, i) {
+            final d        = docs[i].data() as Map<String, dynamic>;
+            final lot      = d['lot'] as String? ?? '';
+            final owoc     = d['owoc'] as String? ?? '';
+            final odmiana  = d['odmiana'] as String? ?? '';
+            final waga     = (d['waga_zejscia'] as num?)?.toDouble() ?? 0.0;
+            final wagaPo   = (d['waga_po'] as num?)?.toDouble() ?? 0.0;
+            final limit    = (d['waga_limit'] as num?)?.toDouble() ?? 0.0;
+            final dysp     = d['dyspozytor_name'] as String? ?? '';
+            final ts       = (d['created_at'] as Timestamp?)?.toDate();
+            final timeFmt  = DateFormat('dd.MM HH:mm');
+            final fmt      = NumberFormat('#,##0', 'pl_PL');
+            final pozostalo = limit - wagaPo;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryMid.withAlpha(20),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.arrow_downward, size: 11, color: AppTheme.primaryMid),
+                              SizedBox(width: 3),
+                              Text('ZEJŚCIE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryMid)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (ts != null)
+                          Text(timeFmt.format(ts),
+                              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(lot, style: const TextStyle(fontSize: 11, color: AppTheme.primaryMid, fontFamily: 'monospace')),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _StanBadge('−${fmt.format(waga)} kg', AppTheme.errorRed),
+                        const SizedBox(width: 8),
+                        if (limit > 0) _StanBadge('pozostało: ${fmt.format(pozostalo.clamp(0, double.infinity))} kg', AppTheme.primaryMid),
+                      ],
+                    ),
+                    if (dysp.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('Dyspozytor: $dysp',
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _StanBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _StanBadge(this.label, this.color);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withAlpha(18),
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: color.withAlpha(60)),
+    ),
+    child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+  );
 }
 
 // ── Ściągnij ze stanów (do MCR) ───────────────────────────────────────────────

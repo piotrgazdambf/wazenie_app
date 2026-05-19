@@ -285,8 +285,7 @@ class _EntryTile extends StatelessWidget {
         content: Text(
           'To cofnie:\n'
           '• wpis rozliczenia (${entry.lot})\n'
-          '• status dostawy → PRZESŁANO\n'
-          '• wpis MCR Zejście\n\n'
+          '• status dostawy → PRZESŁANO\n\n'
           'Czy na pewno?',
         ),
         actions: [

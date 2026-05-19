@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -141,7 +142,6 @@ class _DyspozytoScreenState extends ConsumerState<DyspozytoScreen> {
               Text(_selected!.name,
                   style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 28),
-              // Kropki PIN
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(4, (i) {
@@ -176,30 +176,17 @@ class _DyspozytoScreenState extends ConsumerState<DyspozytoScreen> {
 
 // ── Panel Dyspozytora (po zalogowaniu) ────────────────────────────────────────
 
-class _DyspozytoPanel extends ConsumerStatefulWidget {
+class _DyspozytoPanel extends StatefulWidget {
   final AppUser user;
   final VoidCallback onLogout;
   const _DyspozytoPanel({required this.user, required this.onLogout});
 
   @override
-  ConsumerState<_DyspozytoPanel> createState() => _DyspozytooPanelState();
+  State<_DyspozytoPanel> createState() => _DyspozytooPanelState();
 }
 
-class _DyspozytooPanelState extends ConsumerState<_DyspozytoPanel>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabs;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 1, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
+class _DyspozytooPanelState extends State<_DyspozytoPanel> {
+  bool _oczekujaceExpanded = true;
 
   @override
   Widget build(BuildContext context) {
@@ -224,31 +211,39 @@ class _DyspozytooPanelState extends ConsumerState<_DyspozytoPanel>
             label: const Text('Wyloguj', style: TextStyle(color: kSkanerTextSec, fontSize: 12)),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          labelColor: kSkanerAccent,
-          unselectedLabelColor: kSkanerTextSec,
-          indicatorColor: kSkanerAccent,
-          tabs: const [
-            Tab(text: 'Oczekujące'),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabs,
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          _OczekujaceTab(user: widget.user),
+          // ── Accordion: Oczekujące ──────────────────────────────────────────
+          _OczekujaceAccordion(
+            user: widget.user,
+            expanded: _oczekujaceExpanded,
+            onToggle: () => setState(() => _oczekujaceExpanded = !_oczekujaceExpanded),
+          ),
+          const SizedBox(height: 20),
+          // ── Sekcja skanowania / zejście ────────────────────────────────────
+          _SkanujSectionHeader(),
+          const SizedBox(height: 10),
+          _ZejscieScanner(user: widget.user),
         ],
       ),
     );
   }
 }
 
-// ── Zakładka Oczekujące ───────────────────────────────────────────────────────
+// ── Accordion Oczekujące ──────────────────────────────────────────────────────
 
-class _OczekujaceTab extends StatelessWidget {
+class _OczekujaceAccordion extends StatelessWidget {
   final AppUser user;
-  const _OczekujaceTab({required this.user});
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  const _OczekujaceAccordion({
+    required this.user,
+    required this.expanded,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -258,41 +253,586 @@ class _OczekujaceTab extends StatelessWidget {
           .where('status', isEqualTo: 'oczekujacy')
           .snapshots(),
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
-        }
-        if (snap.hasError) {
-          return Center(child: Text('Błąd: ${snap.error}',
-              style: const TextStyle(color: Colors.red)));
-        }
         final docs = (snap.data?.docs ?? [])
           ..sort((a, b) {
             final aMs = ((a.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
             final bMs = ((b.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
             return bMs.compareTo(aMs);
           });
-        if (docs.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.inbox_outlined, size: 56, color: kSkanerPrimary),
-                SizedBox(height: 12),
-                Text('Brak oczekujących zleceń',
-                    style: TextStyle(color: kSkanerTextSec, fontSize: 15)),
-              ],
+        final count = docs.length;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Nagłówek akordeonu
+            GestureDetector(
+              onTap: onToggle,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: kSkanerCard,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: count > 0 ? kSkanerAccent.withValues(alpha: 0.5) : kSkanerPrimary,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.hourglass_top, color: kSkanerAccent, size: 20),
+                    const SizedBox(width: 10),
+                    const Text('Oczekujące',
+                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 8),
+                    if (count > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: kSkanerAccent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                      )
+                    else
+                      const Text('0', style: TextStyle(color: kSkanerTextSec, fontSize: 14)),
+                    const Spacer(),
+                    Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                      color: kSkanerTextSec,
+                    ),
+                  ],
+                ),
+              ),
             ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          itemCount: docs.length,
-          itemBuilder: (_, i) => _WniosekTile(
-            doc: docs[i] as DocumentSnapshot<Map<String, dynamic>>,
-            user: user,
-          ),
+            // Zawartość
+            if (expanded) ...[
+              const SizedBox(height: 10),
+              if (snap.connectionState == ConnectionState.waiting)
+                const Center(child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(color: kSkanerAccent),
+                ))
+              else if (docs.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: kSkanerCard.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Center(
+                    child: Text('Brak oczekujących zleceń',
+                        style: TextStyle(color: kSkanerTextSec, fontSize: 14)),
+                  ),
+                )
+              else
+                ...docs.map((doc) => _WniosekTile(
+                      doc: doc as DocumentSnapshot<Map<String, dynamic>>,
+                      user: user,
+                    )),
+            ],
+          ],
         );
       },
+    );
+  }
+}
+
+// ── Nagłówek sekcji skanowania ────────────────────────────────────────────────
+
+class _SkanujSectionHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.qr_code_scanner, color: kSkanerAccent, size: 18),
+        const SizedBox(width: 8),
+        const Text(
+          'SKANUJ / ZEJŚCIE ZE STANÓW',
+          style: TextStyle(
+            color: kSkanerAccent,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Sekcja skanowania (dyspozytor robi zejście) ────────────────────────────────
+
+class _ZejscieScanner extends StatefulWidget {
+  final AppUser user;
+  const _ZejscieScanner({required this.user});
+
+  @override
+  State<_ZejscieScanner> createState() => _ZejscieScannerState();
+}
+
+class _ZejscieScannerState extends State<_ZejscieScanner> {
+  final _lotCtrl   = TextEditingController();
+  final _wagaCtrl  = TextEditingController();
+  final _iloscCtrl = TextEditingController();
+  final _lotFocus  = FocusNode();
+
+  Map<String, dynamic>? _delivery; // dane z Firestore
+  double _pobrano = 0.0;            // już pobrano z tego LOT
+  bool _loading  = false;
+  bool _sending  = false;
+  String? _error;
+  bool _useWaga  = true;           // true = waga netto, false = skrzynie
+
+  @override
+  void dispose() {
+    _lotCtrl.dispose();
+    _wagaCtrl.dispose();
+    _iloscCtrl.dispose();
+    _lotFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _lookupLot(String lot) async {
+    final trimmed = lot.trim();
+    if (trimmed.isEmpty) return;
+    setState(() { _loading = true; _error = null; _delivery = null; _wagaCtrl.clear(); _iloscCtrl.clear(); });
+
+    try {
+      final db = FirebaseFirestore.instance;
+
+      // Pobierz dokument dostawy
+      final docId = trimmed.replaceAll('/', '_');
+      DocumentSnapshot<Map<String, dynamic>> doc =
+          await db.collection(AppConstants.colDeliveries).doc(docId).get();
+      if (!doc.exists) {
+        final snap = await db.collection(AppConstants.colDeliveries)
+            .where('lot', isEqualTo: trimmed).limit(1).get();
+        if (snap.docs.isNotEmpty) {
+          doc = snap.docs.first as DocumentSnapshot<Map<String, dynamic>>;
+        }
+      }
+      if (!doc.exists || doc.data() == null) {
+        setState(() { _error = 'Nie znaleziono dostawy: $trimmed'; _loading = false; });
+        return;
+      }
+
+      // Suma już pobranych kg dla tego LOT
+      final zejsciaSnap = await db.collection('skaner_zejscia')
+          .where('lot', isEqualTo: doc.data()!['lot'] ?? trimmed)
+          .get();
+      final pobrano = zejsciaSnap.docs
+          .fold<double>(0.0, (s, d) => s + ((d.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
+
+      setState(() {
+        _delivery = {...doc.data()!, '_id': doc.id};
+        _pobrano  = pobrano;
+        _loading  = false;
+      });
+    } catch (e) {
+      setState(() { _error = 'Błąd: $e'; _loading = false; });
+    }
+  }
+
+  double get _wagaLimit {
+    final raw = (_delivery?['waga_netto'] ?? '').toString()
+        .replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(raw) ?? 0.0;
+  }
+
+  double get _pozostalo => (_wagaLimit - _pobrano).clamp(0.0, double.infinity);
+
+  double get _wagaZejscia {
+    if (_useWaga) {
+      return double.tryParse(_wagaCtrl.text.replaceAll(',', '.')) ?? 0.0;
+    } else {
+      // przelicz z skrzyń: szacunek
+      final ilosc = int.tryParse(_iloscCtrl.text) ?? 0;
+      final total = ((_delivery?['skrzynie_drew'] as int?) ?? 0) +
+                    ((_delivery?['skrzynie_plast'] as int?) ?? 0);
+      if (total == 0) return 0.0;
+      final wagaNetto = _wagaLimit;
+      return ilosc * (wagaNetto / total);
+    }
+  }
+
+  Future<void> _wykonajZejscie() async {
+    final d = _delivery;
+    if (d == null) return;
+    final waga = _wagaZejscia;
+    if (waga <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Podaj wagę lub liczbę skrzyń'), backgroundColor: Colors.red));
+      return;
+    }
+    if (waga > _pozostalo + 0.1) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Nie można pobrać ${waga.toStringAsFixed(0)} kg — pozostało ${_pozostalo.toStringAsFixed(0)} kg'),
+        backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => _sending = true);
+    try {
+      final db  = FirebaseFirestore.instance;
+      final lot = d['lot'] as String? ?? _lotCtrl.text.trim();
+      final wagaPo = _pobrano + waga;
+
+      // 1. Zapisz zejście w skaner_zejscia
+      await db.collection('skaner_zejscia').add({
+        'lot':             lot,
+        'owoc':            d['owoc'] ?? '',
+        'odmiana':         d['odmiana'] ?? '',
+        'dostawca':        d['dostawca'] ?? '',
+        'waga_limit':      _wagaLimit,
+        'waga_zejscia':    waga,
+        'waga_przed':      _pobrano,
+        'waga_po':         wagaPo,
+        'metoda':          _useWaga ? 'waga' : 'skrzynie',
+        'skrzynie_ilosc':  _useWaga ? 0 : (int.tryParse(_iloscCtrl.text) ?? 0),
+        'dyspozytor_id':   widget.user.id,
+        'dyspozytor_name': widget.user.name,
+        'wniosek_id':      null,
+        'created_at':      FieldValue.serverTimestamp(),
+      });
+
+      // 2. Zapisz w MCR queue
+      final now = DateTime.now();
+      final mcrId = 'mcr_skaner_${now.millisecondsSinceEpoch}';
+      await db.collection(AppConstants.colMcrQueue).doc(mcrId).set({
+        'id':           mcrId,
+        'lot':          lot,
+        'czas':         '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}',
+        'akcja':        'Zejście',
+        'waga_netto':   waga.toStringAsFixed(2),
+        'owoc':         d['owoc'] ?? '',
+        'odmiana':      d['odmiana'] ?? '',
+        'przeznaczenie':d['przeznaczenie'] ?? '',
+        'status':       'done',
+        'createdAt':    FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        final fmt = NumberFormat('#,##0', 'pl_PL');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Zejście ${fmt.format(waga)} kg — pozostało ${fmt.format((_wagaLimit - wagaPo).clamp(0, double.infinity))} kg'),
+          backgroundColor: const Color(0xFF2D6A4F),
+        ));
+        // Reset do kolejnego skanowania
+        setState(() {
+          _delivery = null;
+          _pobrano  = 0.0;
+          _sending  = false;
+          _lotCtrl.clear();
+          _wagaCtrl.clear();
+          _iloscCtrl.clear();
+        });
+        _lotFocus.requestFocus();
+      }
+    } catch (e) {
+      setState(() => _sending = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0', 'pl_PL');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Pole LOT ──────────────────────────────────────────────────────
+        TextField(
+          controller: _lotCtrl,
+          focusNode: _lotFocus,
+          autofocus: false,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: 'Zeskanuj lub wpisz LOT...',
+            hintStyle: const TextStyle(color: kSkanerTextSec),
+            filled: true,
+            fillColor: kSkanerCard,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: kSkanerPrimary),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: kSkanerAccent, width: 2),
+            ),
+            suffixIcon: _loading
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: kSkanerAccent)),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.search, color: kSkanerAccent),
+                    onPressed: () => _lookupLot(_lotCtrl.text),
+                  ),
+          ),
+          textInputAction: TextInputAction.search,
+          onSubmitted: _lookupLot,
+        ),
+
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+        ],
+
+        if (_delivery != null) ...[
+          const SizedBox(height: 16),
+
+          // ── Karta dostawy + limit ─────────────────────────────────────
+          _DeliveryLimitCard(
+            delivery: _delivery!,
+            pobrano: _pobrano,
+            pozostalo: _pozostalo,
+            limit: _wagaLimit,
+            fmt: fmt,
+          ),
+          const SizedBox(height: 16),
+
+          // ── Wybór metody ──────────────────────────────────────────────
+          Row(
+            children: [
+              Expanded(child: _MetodaChip(
+                label: 'Waga netto [kg]',
+                icon: Icons.scale_outlined,
+                selected: _useWaga,
+                onTap: () => setState(() { _useWaga = true; _iloscCtrl.clear(); }),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: _MetodaChip(
+                label: 'Skrzynie [szt.]',
+                icon: Icons.inventory_2_outlined,
+                selected: !_useWaga,
+                onTap: () => setState(() { _useWaga = false; _wagaCtrl.clear(); }),
+              )),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ── Pole wprowadzania ─────────────────────────────────────────
+          if (_useWaga)
+            TextField(
+              controller: _wagaCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Waga zejścia',
+                labelStyle: const TextStyle(color: kSkanerTextSec),
+                hintText: '0.0',
+                hintStyle: const TextStyle(color: kSkanerTextSec),
+                suffixText: 'kg',
+                suffixStyle: const TextStyle(color: kSkanerTextSec),
+                filled: true,
+                fillColor: kSkanerCard,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kSkanerPrimary)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kSkanerAccent, width: 2)),
+              ),
+            )
+          else
+            TextField(
+              controller: _iloscCtrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Liczba skrzyń',
+                labelStyle: const TextStyle(color: kSkanerTextSec),
+                suffixText: 'szt.',
+                suffixStyle: const TextStyle(color: kSkanerTextSec),
+                filled: true,
+                fillColor: kSkanerCard,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kSkanerPrimary)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kSkanerAccent, width: 2)),
+              ),
+            ),
+
+          // Szacunek kg dla metody skrzyniowej
+          if (!_useWaga && _wagaZejscia > 0) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: kSkanerAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: kSkanerAccent.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                'Szacunek: ~${fmt.format(_wagaZejscia)} kg',
+                style: const TextStyle(color: kSkanerAccent, fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 16),
+
+          // ── Przycisk Zejście ──────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kSkanerAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: _sending ? null : _wykonajZejscie,
+              icon: _sending
+                  ? const SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.arrow_downward),
+              label: const Text('Zejście ze stanów',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ── Karta dostawy z paskiem limitu ────────────────────────────────────────────
+
+class _DeliveryLimitCard extends StatelessWidget {
+  final Map<String, dynamic> delivery;
+  final double pobrano;
+  final double pozostalo;
+  final double limit;
+  final NumberFormat fmt;
+
+  const _DeliveryLimitCard({
+    required this.delivery,
+    required this.pobrano,
+    required this.pozostalo,
+    required this.limit,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final owoc    = delivery['owoc'] as String? ?? '';
+    final odmiana = delivery['odmiana'] as String? ?? '';
+    final lot     = delivery['lot'] as String? ?? '';
+    final dostawca = delivery['dostawca'] as String? ?? '';
+    final progress = limit > 0 ? (pobrano / limit).clamp(0.0, 1.0) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kSkanerCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kSkanerPrimary, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
+            style: const TextStyle(color: kSkanerAccent, fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(lot, style: const TextStyle(color: Colors.white60, fontSize: 11, fontFamily: 'monospace')),
+          const SizedBox(height: 4),
+          Text('Dostawca: $dostawca', style: const TextStyle(color: kSkanerTextSec, fontSize: 12)),
+          const SizedBox(height: 12),
+          // Pasek postępu
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: kSkanerPrimary.withValues(alpha: 0.3),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progress > 0.9 ? Colors.redAccent : kSkanerAccent,
+              ),
+              minHeight: 8,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text('Pobrano: ${fmt.format(pobrano)} kg',
+                  style: const TextStyle(color: kSkanerTextSec, fontSize: 12)),
+              const Spacer(),
+              Text(
+                'Pozostało: ${fmt.format(pozostalo)} kg',
+                style: TextStyle(
+                  color: pozostalo < 100 ? Colors.redAccent : kSkanerAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text('Limit (waga netto): ${fmt.format(limit)} kg',
+              style: const TextStyle(color: kSkanerTextSec, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetodaChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MetodaChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? kSkanerAccent.withValues(alpha: 0.15) : kSkanerCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? kSkanerAccent : kSkanerPrimary,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: selected ? kSkanerAccent : kSkanerTextSec, size: 16),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? kSkanerAccent : kSkanerTextSec,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -306,23 +846,23 @@ class _WniosekTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final d       = doc.data()!;
-    final lot     = d['lot'] as String? ?? '';
-    final odmiana = d['odmiana'] as String? ?? '';
-    final owoc    = d['owoc'] as String? ?? '';
+    final d        = doc.data()!;
+    final lot      = d['lot'] as String? ?? '';
+    final odmiana  = d['odmiana'] as String? ?? '';
+    final owoc     = d['owoc'] as String? ?? '';
     final dostawca = d['dostawca'] as String? ?? '';
-    final ilosc   = d['skrzynie_ilosc'] as int? ?? 0;
-    final kg      = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
-    final ts      = (d['created_at'] as Timestamp?)?.toDate();
-    final fmt     = NumberFormat('#,##0', 'pl_PL');
-    final timeFmt = DateFormat('dd.MM HH:mm');
+    final ilosc    = d['skrzynie_ilosc'] as int? ?? 0;
+    final kg       = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
+    final ts       = (d['created_at'] as Timestamp?)?.toDate();
+    final fmt      = NumberFormat('#,##0', 'pl_PL');
+    final timeFmt  = DateFormat('dd.MM HH:mm');
 
-    return Card(
-      color: kSkanerCard,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: kSkanerCard,
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: kSkanerPrimary, width: 1),
+        border: Border.all(color: kSkanerPrimary, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -386,7 +926,7 @@ class _WniosekTile extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.check, size: 16),
                     label: const Text('Akceptuj'),
-                    onPressed: () => _akceptuj(context, doc.id, user),
+                    onPressed: () => _akceptuj(context, doc.id, user, d),
                   ),
                 ),
               ],
@@ -397,26 +937,97 @@ class _WniosekTile extends StatelessWidget {
     );
   }
 
-  Future<void> _akceptuj(BuildContext context, String id, AppUser user) async {
-    await FirebaseFirestore.instance.collection('skaner_wnioski').doc(id).update({
-      'status':         'zaakceptowany',
-      'dyspozytor_id':  user.id,
+  Future<void> _akceptuj(
+      BuildContext context, String id, AppUser user, Map<String, dynamic> d) async {
+    final lot  = d['lot'] as String? ?? '';
+    final kg   = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
+    final db   = FirebaseFirestore.instance;
+
+    // Pobierz dane dostawy żeby znać limit
+    double limit = 0.0;
+    try {
+      final docId = lot.replaceAll('/', '_');
+      var delivDoc = await db.collection(AppConstants.colDeliveries).doc(docId).get();
+      if (!delivDoc.exists) {
+        final snap = await db.collection(AppConstants.colDeliveries)
+            .where('lot', isEqualTo: lot).limit(1).get();
+        if (snap.docs.isNotEmpty) delivDoc = snap.docs.first as DocumentSnapshot<Map<String, dynamic>>;
+      }
+      if (delivDoc.exists) {
+        final raw = (delivDoc.data()?['waga_netto'] ?? '').toString()
+            .replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '');
+        limit = double.tryParse(raw) ?? 0.0;
+      }
+    } catch (_) {}
+
+    // Pobierz już pobrane
+    double pobrano = 0.0;
+    try {
+      final snap = await db.collection('skaner_zejscia').where('lot', isEqualTo: lot).get();
+      pobrano = snap.docs.fold(0.0, (s, d) => s + ((d.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
+    } catch (_) {}
+
+    final wagaPo = pobrano + kg;
+
+    // 1. Aktualizuj wniosek
+    await db.collection('skaner_wnioski').doc(id).update({
+      'status':          'zaakceptowany',
+      'dyspozytor_id':   user.id,
       'dyspozytor_name': user.name,
-      'updated_at':     FieldValue.serverTimestamp(),
+      'updated_at':      FieldValue.serverTimestamp(),
     });
+
+    // 2. Zapisz zejście w skaner_zejscia
+    if (kg > 0) {
+      try {
+        await db.collection('skaner_zejscia').add({
+          'lot':             lot,
+          'owoc':            d['owoc'] ?? '',
+          'odmiana':         d['odmiana'] ?? '',
+          'dostawca':        d['dostawca'] ?? '',
+          'waga_limit':      limit,
+          'waga_zejscia':    kg,
+          'waga_przed':      pobrano,
+          'waga_po':         wagaPo,
+          'metoda':          'skrzynie',
+          'skrzynie_ilosc':  d['skrzynie_ilosc'] ?? 0,
+          'dyspozytor_id':   user.id,
+          'dyspozytor_name': user.name,
+          'wniosek_id':      id,
+          'created_at':      FieldValue.serverTimestamp(),
+        });
+
+        // 3. MCR queue
+        final now   = DateTime.now();
+        final mcrId = 'mcr_skaner_${now.millisecondsSinceEpoch}';
+        await db.collection(AppConstants.colMcrQueue).doc(mcrId).set({
+          'id':           mcrId,
+          'lot':          lot,
+          'czas':         '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}',
+          'akcja':        'Zejście',
+          'waga_netto':   kg.toStringAsFixed(2),
+          'owoc':         d['owoc'] ?? '',
+          'odmiana':      d['odmiana'] ?? '',
+          'przeznaczenie':d['przeznaczenie'] ?? '',
+          'status':       'done',
+          'createdAt':    FieldValue.serverTimestamp(),
+        });
+      } catch (_) {}
+    }
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Zlecenie zaakceptowane'),
+        const SnackBar(content: Text('Zaakceptowano i wykonano zejście'),
             backgroundColor: Color(0xFF2D6A4F)));
     }
   }
 
   Future<void> _odrzuc(BuildContext context, String id, AppUser user) async {
     await FirebaseFirestore.instance.collection('skaner_wnioski').doc(id).update({
-      'status':         'odrzucony',
-      'dyspozytor_id':  user.id,
+      'status':          'odrzucony',
+      'dyspozytor_id':   user.id,
       'dyspozytor_name': user.name,
-      'updated_at':     FieldValue.serverTimestamp(),
+      'updated_at':      FieldValue.serverTimestamp(),
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -1160,35 +1160,10 @@ class _RozliczDialogState extends State<_RozliczDialog> {
           .doc(e.id)
           .update({'status': 'ROZLICZONO'});
 
-      // 3. MCR Zejście
-      final now   = DateTime.now();
-      final mcrId = 'mcr_zejscie_${now.millisecondsSinceEpoch}';
-      final mcrData = {
-        'id':           mcrId,
-        'lot':          e.lot,
-        'czas':         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-        'akcja':        'Zejscie',
-        'waga_netto':   e.wagaNetto,
-        'owoc':         e.owoc,
-        'odmiana':      e.odmiana,
-        'przeznaczenie':e.przeznaczenie,
-        'status':       'pending',
-        'createdAt':    now.toIso8601String(),
-      };
-      try {
-        await db.collection(AppConstants.colMcrQueue)
-            .doc(mcrId)
-            .set({...mcrData, 'createdAt': FieldValue.serverTimestamp()});
-      } catch (_) {
-        await buffer.enqueue(OfflineEntry(
-          id: mcrId, type: 'mcr_zejscie', data: mcrData, createdAt: now,
-        ));
-      }
-
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Rozliczono + Zejście do MCR'),
+          content: Text('Rozliczono'),
           backgroundColor: AppTheme.successGreen,
         ));
       }
