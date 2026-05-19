@@ -57,6 +57,10 @@ class PlsEntry {
   final List<Map<String, String>> modifications;
   final int mbDrewIl;
   final int mbPlastIl;
+  final int skrzynieDrew;
+  final int skrzyniePlast;
+  final double drewWagaJedn;
+  final double plastWagaJedn;
 
   const PlsEntry({
     required this.id,
@@ -87,6 +91,10 @@ class PlsEntry {
     this.modifications = const [],
     this.mbDrewIl = 0,
     this.mbPlastIl = 0,
+    this.skrzynieDrew = 0,
+    this.skrzyniePlast = 0,
+    this.drewWagaJedn = 0.0,
+    this.plastWagaJedn = 0.0,
   });
 
   factory PlsEntry.fromFirestore(String id, Map<String, dynamic> d) => PlsEntry(
@@ -121,8 +129,12 @@ class PlsEntry {
             ?.map((e) => Map<String, String>.from(
                 (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
             .toList() ?? const [],
-        mbDrewIl:  d['mb_drew_il']  as int? ?? (d['skrzynie_mb_drew']  as int? ?? 0),
-        mbPlastIl: d['mb_plast_il'] as int? ?? (d['skrzynie_mb_plast'] as int? ?? 0),
+        mbDrewIl:    d['mb_drew_il']    as int? ?? (d['skrzynie_mb_drew']  as int? ?? 0),
+        mbPlastIl:   d['mb_plast_il']   as int? ?? (d['skrzynie_mb_plast'] as int? ?? 0),
+        skrzynieDrew:  d['skrzynie_drew']  as int? ?? 0,
+        skrzyniePlast: d['skrzynie_plast'] as int? ?? 0,
+        drewWagaJedn:  (d['drew_waga_jedn']  as num?)?.toDouble() ?? 0.0,
+        plastWagaJedn: (d['plast_waga_jedn'] as num?)?.toDouble() ?? 0.0,
       );
 }
 

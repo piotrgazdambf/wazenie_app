@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
+
 import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../pls/pls_screen.dart';
@@ -98,6 +100,7 @@ class _RozliczoneScreenState extends ConsumerState<RozliczoneScreen>
       child: Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
+          leading: BackButton(onPressed: () => context.go('/home')),
           title: const Text('Rozliczone'),
           bottom: TabBar(
             controller: _tabCtrl,
@@ -552,6 +555,108 @@ class _StatChip extends StatelessWidget {
   }
 }
 
+// ── Panel podsumowania dostawy w dialogu ──────────────────────────────────────
+
+class _DeliverySummary extends StatelessWidget {
+  final PlsEntry entry;
+  const _DeliverySummary({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final wagaNetto = double.tryParse(
+            entry.wagaNetto.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '')) ??
+        0.0;
+    final drew  = entry.skrzynieDrew;
+    final plast = entry.skrzyniePlast;
+    final total = drew + plast;
+
+    final fmt = NumberFormat('#,##0', 'pl_PL');
+    final fmtD = NumberFormat('#,##0.#', 'pl_PL');
+
+    // szacunkowa waga owocu w jednej skrzyni (średnia ważona)
+    String? avgDrew, avgPlast;
+    if (drew > 0 && plast > 0 && entry.drewWagaJedn > 0 && entry.plastWagaJedn > 0 && wagaNetto > 0) {
+      final totalTara = drew * entry.drewWagaJedn + plast * entry.plastWagaJedn;
+      avgDrew  = fmtD.format(wagaNetto * entry.drewWagaJedn  / totalTara);
+      avgPlast = fmtD.format(wagaNetto * entry.plastWagaJedn / totalTara);
+    } else if (drew > 0 && plast == 0 && wagaNetto > 0) {
+      avgDrew = fmtD.format(wagaNetto / drew);
+    } else if (plast > 0 && drew == 0 && wagaNetto > 0) {
+      avgPlast = fmtD.format(wagaNetto / plast);
+    }
+
+    const color = Color(0xFF0F766E);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            [entry.owoc, if (entry.odmiana.isNotEmpty) entry.odmiana].join(' · '),
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w700, color: color),
+          ),
+          const SizedBox(height: 8),
+          if (wagaNetto > 0)
+            _SumRow('Waga netto', '${fmt.format(wagaNetto)} kg'),
+          if (drew > 0)
+            _SumRow(
+              'Skrz. drewniane',
+              '$drew szt.'
+              '${entry.drewWagaJedn > 0 ? ' · tara ${entry.drewWagaJedn.toStringAsFixed(0)} kg/szt.' : ''}'
+              '${avgDrew != null ? ' · ~$avgDrew kg owocu/szt.' : ''}',
+            ),
+          if (plast > 0)
+            _SumRow(
+              'Skrz. plastikowe',
+              '$plast szt.'
+              '${entry.plastWagaJedn > 0 ? ' · tara ${entry.plastWagaJedn.toStringAsFixed(0)} kg/szt.' : ''}'
+              '${avgPlast != null ? ' · ~$avgPlast kg owocu/szt.' : ''}',
+            ),
+          if (total > 0 && wagaNetto > 0 && drew > 0 && plast > 0)
+            _SumRow('Śr. owoc/skrzynię', '~${fmtD.format(wagaNetto / total)} kg/szt.'),
+        ],
+      ),
+    );
+  }
+}
+
+class _SumRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _SumRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label,
+                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Dialog dodawania wpisu ────────────────────────────────────────────────────
 
 class _AddDialog extends StatefulWidget {
@@ -572,6 +677,7 @@ class _AddDialogState extends State<_AddDialog> {
   String _lot = '';
   DateTime _data = DateTime.now();
   bool _saving = false;
+  PlsEntry? _selectedEntry;
 
   @override
   void dispose() {
@@ -583,12 +689,14 @@ class _AddDialogState extends State<_AddDialog> {
   }
 
   void _onLotSelected(String lot) {
-    setState(() => _lot = lot);
-    final match =
-        widget.plsEntries.where((e) => e.lot == lot).toList();
-    if (match.isNotEmpty && _odmianaCtrl.text.isEmpty) {
-      setState(() => _odmianaCtrl.text = match.first.odmiana);
-    }
+    final match = widget.plsEntries.where((e) => e.lot == lot).toList();
+    setState(() {
+      _lot = lot;
+      _selectedEntry = match.isNotEmpty ? match.first : null;
+      if (match.isNotEmpty && _odmianaCtrl.text.isEmpty) {
+        _odmianaCtrl.text = match.first.odmiana;
+      }
+    });
   }
 
   Future<void> _pickDate() async {
@@ -694,7 +802,12 @@ class _AddDialogState extends State<_AddDialog> {
                     return TextFormField(
                       controller: ctrl,
                       focusNode: fn,
-                      onChanged: (v) => _lot = v,
+                      onChanged: (v) {
+                        _lot = v;
+                        if (_selectedEntry != null && _selectedEntry!.lot != v) {
+                          setState(() => _selectedEntry = null);
+                        }
+                      },
                       decoration: const InputDecoration(
                         labelText: 'LOT / Nr dostawy',
                         isDense: true,
@@ -704,6 +817,10 @@ class _AddDialogState extends State<_AddDialog> {
                     );
                   },
                 ),
+                if (_selectedEntry != null) ...[
+                  const SizedBox(height: 10),
+                  _DeliverySummary(entry: _selectedEntry!),
+                ],
                 const SizedBox(height: 14),
 
                 // Data

@@ -801,22 +801,24 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       title: 'Skrzynie',
       child: Column(
         children: [
-          // Skrzynie dostawcy
-          Row(children: [
-            Expanded(child: _NumField('Ilość skrzyń drew.', _drewIlCtrl)),
-            const SizedBox(width: 8),
-            Expanded(child: _NumField('Waga 1 szt. [kg]',  _drewWgCtrl)),
-          ]),
-          const SizedBox(height: 4),
-          _AutoCalcRow('TARA drew.', _taraDrew),
-          const SizedBox(height: 10),
-          Row(children: [
-            Expanded(child: _NumField('Ilość skrzyń plast.', _plastIlCtrl)),
-            const SizedBox(width: 8),
-            Expanded(child: _NumField('Waga 1 szt. [kg]',   _plastWgCtrl)),
-          ]),
-          const SizedBox(height: 4),
-          _AutoCalcRow('TARA plast.', _taraPlast),
+          // Skrzynie dostawcy — pola ukryte gdy aktywne różne wagi (grupy je zastępują)
+          if (!_rozneWagi) ...[
+            Row(children: [
+              Expanded(child: _NumField('Ilość skrzyń drew.', _drewIlCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _NumField('Waga 1 szt. [kg]',  _drewWgCtrl)),
+            ]),
+            const SizedBox(height: 4),
+            _AutoCalcRow('TARA drew.', _taraDrew),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: _NumField('Ilość skrzyń plast.', _plastIlCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _NumField('Waga 1 szt. [kg]',   _plastWgCtrl)),
+            ]),
+            const SizedBox(height: 4),
+            _AutoCalcRow('TARA plast.', _taraPlast),
+          ],
           const Divider(height: 20),
           // Skrzynie MB
           SwitchListTile.adaptive(
