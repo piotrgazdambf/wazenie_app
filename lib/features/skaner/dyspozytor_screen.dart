@@ -498,7 +498,12 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
         'created_at':      FieldValue.serverTimestamp(),
       });
 
-      // 2. Zapisz w MCR queue
+      // 2. Zaktualizuj pobrano_kg w deliveries (odejmuje od Stanów)
+      await db.collection(AppConstants.colDeliveries).doc(d['_id'] as String).update({
+        'pobrano_kg': FieldValue.increment(waga),
+      });
+
+      // 3. Zapisz w MCR queue
       final now = DateTime.now();
       final mcrId = 'mcr_skaner_${now.millisecondsSinceEpoch}';
       await db.collection(AppConstants.colMcrQueue).doc(mcrId).set({
@@ -943,8 +948,9 @@ class _WniosekTile extends StatelessWidget {
     final kg   = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
     final db   = FirebaseFirestore.instance;
 
-    // Pobierz dane dostawy żeby znać limit
+    // Pobierz dane dostawy żeby znać limit i ID dokumentu
     double limit = 0.0;
+    String? delivDocId;
     try {
       final docId = lot.replaceAll('/', '_');
       var delivDoc = await db.collection(AppConstants.colDeliveries).doc(docId).get();
@@ -954,6 +960,7 @@ class _WniosekTile extends StatelessWidget {
         if (snap.docs.isNotEmpty) delivDoc = snap.docs.first as DocumentSnapshot<Map<String, dynamic>>;
       }
       if (delivDoc.exists) {
+        delivDocId = delivDoc.id;
         final raw = (delivDoc.data()?['waga_netto'] ?? '').toString()
             .replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '');
         limit = double.tryParse(raw) ?? 0.0;
@@ -997,7 +1004,14 @@ class _WniosekTile extends StatelessWidget {
           'created_at':      FieldValue.serverTimestamp(),
         });
 
-        // 3. MCR queue
+        // 3. Zaktualizuj pobrano_kg w deliveries
+        if (delivDocId != null) {
+          await db.collection(AppConstants.colDeliveries).doc(delivDocId).update({
+            'pobrano_kg': FieldValue.increment(kg),
+          });
+        }
+
+        // 4. MCR queue
         final now   = DateTime.now();
         final mcrId = 'mcr_skaner_${now.millisecondsSinceEpoch}';
         await db.collection(AppConstants.colMcrQueue).doc(mcrId).set({

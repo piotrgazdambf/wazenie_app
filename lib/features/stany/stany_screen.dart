@@ -24,6 +24,8 @@ class StanOdmiany {
   final String data;
   final DateTime? createdAt;
 
+  final double pobranoKg;
+
   const StanOdmiany({
     required this.id,
     required this.lot,
@@ -36,6 +38,7 @@ class StanOdmiany {
     required this.nrDostawy,
     required this.data,
     this.createdAt,
+    this.pobranoKg = 0.0,
   });
 
   factory StanOdmiany.fromFirestore(String id, Map<String, dynamic> d) {
@@ -57,11 +60,14 @@ class StanOdmiany {
       nrDostawy:     d['nr_dostawy'] as String? ?? '',
       data:          d['data'] as String? ?? '',
       createdAt:     parseDate(d['createdAt']),
+      pobranoKg:     (d['pobrano_kg'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
-  double get kgValue =>
+  double get kgOriginal =>
       double.tryParse(wagaNetto.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
+
+  double get kgValue => (kgOriginal - pobranoKg).clamp(0.0, double.infinity);
 }
 
 // ── Dane skrzyń per lot ────────────────────────────────────────────────────────
