@@ -317,43 +317,41 @@ class _SkanerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF1B4332),
-      borderRadius: BorderRadius.circular(20),
+      color: Colors.white.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF2D6A4F), width: 1.5),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
             children: [
-              Icon(Icons.qr_code_scanner, color: Color(0xFF52B788), size: 32),
-              SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'SKANER',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  Text(
-                    'Wózkowy / Dyspozytor',
-                    style: TextStyle(color: Color(0xFF8FB5A0), fontSize: 12),
-                  ),
-                ],
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: Colors.white.withOpacity(0.2),
+                child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 22),
               ),
-              SizedBox(width: 16),
-              Icon(Icons.chevron_right, color: Color(0xFF52B788), size: 28),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Skaner',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Wózkowy / Dyspozytor',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white54),
             ],
           ),
         ),
