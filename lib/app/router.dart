@@ -19,6 +19,9 @@ import '../features/skrzynie/skrzynie_screen.dart';
 import '../features/stany/stany_screen.dart';
 import '../features/karty/karty_screen.dart';
 import '../features/rozliczone/rozliczone_screen.dart';
+import '../features/skaner/dyspozytor_screen.dart';
+import '../features/skaner/skaner_entry_screen.dart';
+import '../features/skaner/wozkowy_screen.dart';
 import '../features/wsg/wsg_screen.dart';
 
 // ── Notifier do odświeżania routera gdy zmienią się providery ────────────────
@@ -57,9 +60,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       final session = ref.read(currentSessionProvider);
       final isLoggedIn = session != null && !session.isExpired;
       final onAuthScreen = path == '/login' || path == '/splash';
+      final isSkanerRoute = path.startsWith('/skaner');
 
       if (isLoggedIn && onAuthScreen) return '/home';
-      if (!isLoggedIn && !onAuthScreen) return '/login';
+      if (!isLoggedIn && !onAuthScreen && !isSkanerRoute) return '/login';
       if (path == '/splash') return '/login';
 
       return null;
@@ -106,6 +110,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/admin/users', builder: (_, __) => const UsersScreen()),
       GoRoute(path: '/admin/sync', builder: (_, __) => const SyncScreen()),
       GoRoute(path: '/admin/catalog', builder: (_, __) => const CatalogScreen()),
+      GoRoute(path: '/skaner', builder: (_, __) => const SkanerEntryScreen()),
+      GoRoute(path: '/skaner/wozkowy', builder: (_, __) => const WozkowyScreen()),
+      GoRoute(path: '/skaner/dyspozytor', builder: (_, __) => const DyspozytoScreen()),
     ],
     errorBuilder: (_, state) => Scaffold(
       body: Center(child: Text('Błąd: ${state.error}')),

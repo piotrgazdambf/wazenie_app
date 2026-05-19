@@ -207,6 +207,9 @@ class _PinScreenState extends ConsumerState<PinScreen> {
               children: users.map((u) => _UserTile(user: u, onTap: () => _selectUser(u))).toList(),
             ),
           ),
+          const SizedBox(height: 32),
+          _SkanerButton(onTap: () => context.go('/skaner')),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -299,6 +302,61 @@ class _PinScreenState extends ConsumerState<PinScreen> {
             ),
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+}
+
+// ── Widget: przycisk SKANER ───────────────────────────────────────────────────
+
+class _SkanerButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SkanerButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF1B4332),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF2D6A4F), width: 1.5),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.qr_code_scanner, color: Color(0xFF52B788), size: 32),
+              SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'SKANER',
+                    style: TextStyle(
+                      color: Color(0xFF52B788),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  Text(
+                    'Wózkowy / Dyspozytor',
+                    style: TextStyle(color: Color(0xFF8FB5A0), fontSize: 12),
+                  ),
+                ],
+              ),
+              SizedBox(width: 16),
+              Icon(Icons.chevron_right, color: Color(0xFF2D6A4F), size: 28),
+            ],
+          ),
+        ),
       ),
     );
   }

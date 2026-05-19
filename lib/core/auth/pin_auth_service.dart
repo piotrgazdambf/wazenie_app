@@ -115,14 +115,21 @@ class AppUser {
   final String id;
   final String name;
   final UserRole role;
+  final bool scannerOnly;
 
-  const AppUser({required this.id, required this.name, required this.role});
+  const AppUser({
+    required this.id,
+    required this.name,
+    required this.role,
+    this.scannerOnly = false,
+  });
 
   factory AppUser.fromFirestore(String id, Map<String, dynamic> data) {
     return AppUser(
       id: id,
       name: data['name'] as String? ?? '',
       role: data['role'] == 'admin' ? UserRole.admin : UserRole.user,
+      scannerOnly: data['scanner_only'] as bool? ?? false,
     );
   }
 
@@ -240,8 +247,25 @@ class PinAuthService {
     }
   }
 
-  // ── Pobierz listę aktywnych użytkowników ─────────────────────────────────────
+  // ── Pobierz listę aktywnych użytkowników (bez scanner_only) ──────────────────
   Future<List<AppUser>> fetchUsers() async {
+    final snap = await _db
+        .collection(AppConstants.colUsers)
+        .where('active', isEqualTo: true)
+        .get();
+    return snap.docs
+        .map((d) => AppUser.fromFirestore(d.id, d.data()))
+        .where((u) => !u.scannerOnly)
+        .toList()
+      ..sort((a, b) {
+        if (a.isAdmin && !b.isAdmin) return -1;
+        if (!a.isAdmin && b.isAdmin) return 1;
+        return a.name.compareTo(b.name);
+      });
+  }
+
+  // ── Pobierz wszystkich użytkowników skanera (łącznie ze scanner_only) ────────
+  Future<List<AppUser>> fetchSkanerUsers() async {
     final snap = await _db
         .collection(AppConstants.colUsers)
         .where('active', isEqualTo: true)
@@ -250,11 +274,25 @@ class PinAuthService {
         .map((d) => AppUser.fromFirestore(d.id, d.data()))
         .toList()
       ..sort((a, b) {
-        // Admin zawsze pierwszy
         if (a.isAdmin && !b.isAdmin) return -1;
         if (!a.isAdmin && b.isAdmin) return 1;
         return a.name.compareTo(b.name);
       });
+  }
+
+  // ── Dodaj Olafa jeśli nie istnieje ───────────────────────────────────────────
+  Future<void> seedOlafIfNeeded() async {
+    try {
+      final doc = await _db.collection(AppConstants.colUsers).doc('olaf_adamczyk').get();
+      if (doc.exists) return;
+      await _db.collection(AppConstants.colUsers).doc('olaf_adamczyk').set({
+        'name': 'Olaf Adamczyk',
+        'pin': hashPin('6523'),
+        'role': 'user',
+        'active': true,
+        'scanner_only': true,
+      });
+    } catch (_) {}
   }
 
   // ── Weryfikacja PIN ───────────────────────────────────────────────────────────
@@ -327,4 +365,8 @@ final currentSessionProvider = StateProvider<AuthSession?>((ref) => null);
 
 final usersListProvider = FutureProvider<List<AppUser>>((ref) async {
   return ref.read(pinAuthServiceProvider).fetchUsers();
+});
+
+final skanerUsersProvider = FutureProvider<List<AppUser>>((ref) async {
+  return ref.read(pinAuthServiceProvider).fetchSkanerUsers();
 });
