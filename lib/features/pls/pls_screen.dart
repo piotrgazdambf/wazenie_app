@@ -1238,6 +1238,8 @@ class _RozliczDialogState extends State<_RozliczDialog> {
                   child: Text(widget.entry.lot,
                       style: const TextStyle(fontFamily: 'monospace', fontSize: 14, color: AppTheme.primaryDark)),
                 ),
+                const SizedBox(height: 10),
+                _EntryDeliverySummary(entry: widget.entry),
                 const SizedBox(height: 14),
 
                 InkWell(
@@ -1293,6 +1295,108 @@ class _RozliczDialogState extends State<_RozliczDialog> {
               : const Text('Zapisz'),
         ),
       ],
+    );
+  }
+}
+
+// ── Panel podsumowania dostawy w _RozliczDialog ───────────────────────────────
+
+class _EntryDeliverySummary extends StatelessWidget {
+  final PlsEntry entry;
+  const _EntryDeliverySummary({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final wagaNetto = double.tryParse(
+            entry.wagaNetto.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '')) ??
+        0.0;
+    final drew  = entry.skrzynieDrew;
+    final plast = entry.skrzyniePlast;
+    final total = drew + plast;
+
+    final fmtD = NumberFormat('#,##0.#', 'pl_PL');
+
+    String? avgDrew, avgPlast;
+    if (drew > 0 && plast > 0 && entry.drewWagaJedn > 0 && entry.plastWagaJedn > 0 && wagaNetto > 0) {
+      final totalTara = drew * entry.drewWagaJedn + plast * entry.plastWagaJedn;
+      avgDrew  = fmtD.format(wagaNetto * entry.drewWagaJedn  / totalTara);
+      avgPlast = fmtD.format(wagaNetto * entry.plastWagaJedn / totalTara);
+    } else if (drew > 0 && plast == 0 && wagaNetto > 0) {
+      avgDrew = fmtD.format(wagaNetto / drew);
+    } else if (plast > 0 && drew == 0 && wagaNetto > 0) {
+      avgPlast = fmtD.format(wagaNetto / plast);
+    }
+
+    if (wagaNetto == 0 && total == 0) return const SizedBox.shrink();
+
+    const color = Color(0xFF0F766E);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            [entry.owoc, if (entry.odmiana.isNotEmpty) entry.odmiana].join(' · '),
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w700, color: color),
+          ),
+          const SizedBox(height: 8),
+          if (wagaNetto > 0)
+            _DSumRow('Waga netto', '${NumberFormat('#,##0', 'pl_PL').format(wagaNetto)} kg'),
+          if (drew > 0)
+            _DSumRow(
+              'Skrz. drewniane',
+              '$drew szt.'
+              '${entry.drewWagaJedn > 0 ? ' · tara ${entry.drewWagaJedn.toStringAsFixed(0)} kg/szt.' : ''}'
+              '${avgDrew != null ? ' · ~$avgDrew kg owocu/szt.' : ''}',
+            ),
+          if (plast > 0)
+            _DSumRow(
+              'Skrz. plastikowe',
+              '$plast szt.'
+              '${entry.plastWagaJedn > 0 ? ' · tara ${entry.plastWagaJedn.toStringAsFixed(0)} kg/szt.' : ''}'
+              '${avgPlast != null ? ' · ~$avgPlast kg owocu/szt.' : ''}',
+            ),
+          if (total > 0 && wagaNetto > 0 && drew > 0 && plast > 0)
+            _DSumRow('Śr. owoc/skrzynię', '~${fmtD.format(wagaNetto / total)} kg/szt.'),
+        ],
+      ),
+    );
+  }
+}
+
+class _DSumRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _DSumRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label,
+                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary)),
+          ),
+        ],
+      ),
     );
   }
 }
