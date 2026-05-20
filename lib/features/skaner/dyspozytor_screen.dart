@@ -468,9 +468,68 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
       return;
     }
     if (waga > _pozostalo + 0.1) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Nie można pobrać ${waga.toStringAsFixed(0)} kg — pozostało ${_pozostalo.toStringAsFixed(0)} kg'),
-        backgroundColor: Colors.red));
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0x33FF0000),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.block, color: Colors.redAccent, size: 52),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Za duża ilość!',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Na stanie zostało tylko:',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 16),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '~${_pozostalo.toStringAsFixed(0)} kg',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 36,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.pop(_),
+                  child: const Text('Popraw wartość',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
       return;
     }
 
@@ -979,14 +1038,68 @@ class _WniosekTile extends StatelessWidget {
       final pozostalo = limit - pobrano;
       if (kg > pozostalo + 0.1) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-              'Nie można zaakceptować — wniosek: ~${kg.toStringAsFixed(0)} kg, '
-              'pozostało na stanie: ${pozostalo.clamp(0, double.infinity).toStringAsFixed(0)} kg',
+          await showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              backgroundColor: const Color(0xFF1A1A2E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Color(0x33FF0000),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.block, color: Colors.redAccent, size: 52),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Za duża ilość!',
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Na stanie zostało tylko:',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '~${pozostalo.clamp(0, double.infinity).toStringAsFixed(0)} kg',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.pop(_),
+                      child: const Text('OK',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ));
+          );
         }
         return;
       }
