@@ -162,14 +162,78 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
 
     // Walidacja: nie wysyłaj jeśli przekracza stan
     if (kgSzacunek > _pozostalo + 0.1) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          'Ilość nieprawidłowa — szacunek ~${kgSzacunek.toStringAsFixed(0)} kg '
-          'przekracza pozostałe ${_pozostalo.toStringAsFixed(0)} kg na stanie',
+      final maxSkrzynie = kgPerCrate > 0 ? (_pozostalo / kgPerCrate).floor() : 0;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0x33FF0000),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.block, color: Colors.redAccent, size: 52),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'ZA DUŻO!',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _pozostalo < 1
+                    ? 'Ta dostawa jest już\nw pełni pobrana.'
+                    : 'Na stanie zostało tylko:',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 16),
+              ),
+              if (_pozostalo >= 1) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '~${_pozostalo.toStringAsFixed(0)} kg',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (maxSkrzynie > 0)
+                  Text(
+                    '(maks. $maxSkrzynie skrzyń)',
+                    style: const TextStyle(color: Colors.white54, fontSize: 14),
+                  ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.pop(_),
+                  child: const Text('Popraw ilość',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
         ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ));
+      );
       return;
     }
 
