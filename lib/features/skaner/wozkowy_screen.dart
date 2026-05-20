@@ -183,12 +183,12 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
               ),
               const SizedBox(height: 20),
               const Text(
-                'ZA DUŻO!',
+                'Za duża ilość!',
                 style: TextStyle(
                   color: Colors.redAccent,
-                  fontSize: 28,
+                  fontSize: 26,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+                  letterSpacing: 1,
                 ),
               ),
               const SizedBox(height: 12),
