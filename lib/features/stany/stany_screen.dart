@@ -368,7 +368,7 @@ class _MagazynSummaryCard extends StatelessWidget {
       final przKod = _extractKod(e.przeznaczenie);
       if (!jablkoByKod.containsKey(przKod)) continue;
       final owoc    = e.owoc.trim().toLowerCase();
-      final odmiana = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
+      final odmiana = _cap(e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim());
       final kg = e.effectiveKg(zejsciaMap);
       if (owoc == 'jabłko' || owoc.contains('jab')) {
         jablkoByKod[przKod]![odmiana]  = (jablkoByKod[przKod]![odmiana]  ?? 0) + kg;
@@ -484,6 +484,9 @@ class _MagazynSummaryCard extends StatelessWidget {
     );
   }
 
+  static String _cap(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+
   static String _extractKod(String przeznaczenie) {
     final p = przeznaczenie.trim().toUpperCase();
     if (p.startsWith('P')) return 'P';
@@ -516,9 +519,9 @@ class _DostawcyView extends StatelessWidget {
     for (final e in entries) {
       final owoc = e.owoc.trim().isEmpty ? '—' : _cap(e.owoc.trim());
       byOwocKey.putIfAbsent(owoc, () => {});
-      final odmLabel = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
+      final odmLabel = _cap(e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim());
       final key = '${odmLabel}__${e.dostawcaKod}__${e.dostawca}';
-      keyLabel[key] = '${_cap(odmLabel)}   ${e.dostawcaKod.isNotEmpty ? e.dostawcaKod : ''}  —  ${e.dostawca}';
+      keyLabel[key] = '$odmLabel   ${e.dostawcaKod.isNotEmpty ? e.dostawcaKod : ''}  —  ${e.dostawca}';
       byOwocKey[owoc]![key] = (byOwocKey[owoc]![key] ?? 0) + e.effectiveKg(zejsciaMap);
     }
 
