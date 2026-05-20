@@ -795,6 +795,13 @@ class _DeliveryLimitCard extends StatelessWidget {
     final lot     = delivery['lot'] as String? ?? '';
     final dostawca = delivery['dostawca'] as String? ?? '';
     final progress = limit > 0 ? (pobrano / limit).clamp(0.0, 1.0) : 0.0;
+    final totalDrew    = (delivery['skrzynie_drew']  as int?) ?? 0;
+    final totalPlast   = (delivery['skrzynie_plast'] as int?) ?? 0;
+    final totalSkrzynie = totalDrew + totalPlast;
+    final skrzyniePobrane = totalSkrzynie > 0 && limit > 0
+        ? (pobrano * totalSkrzynie / limit).round().clamp(0, totalSkrzynie)
+        : 0;
+    final skrzyniePozostalo = totalSkrzynie - skrzyniePobrane;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -846,6 +853,36 @@ class _DeliveryLimitCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text('Limit (waga netto): ${fmt.format(limit)} kg',
               style: const TextStyle(color: kSkanerTextSec, fontSize: 11)),
+          if (totalSkrzynie > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: kSkanerPrimary.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: kSkanerAccent.withValues(alpha: 0.2)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.inventory_2_outlined, color: kSkanerAccent, size: 15),
+                const SizedBox(width: 8),
+                const Text('Skrzynie:',
+                    style: TextStyle(color: kSkanerTextSec, fontSize: 12)),
+                const Spacer(),
+                Text('Pobrano: $skrzyniePobrane szt.',
+                    style: const TextStyle(
+                        color: kSkanerTextSec, fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 10),
+                Text(
+                  'Zostało: $skrzyniePozostalo szt.',
+                  style: TextStyle(
+                    color: skrzyniePozostalo == 0 ? Colors.redAccent : kSkanerAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ]),
+            ),
+          ],
         ],
       ),
     );

@@ -448,6 +448,11 @@ class _DeliveryCard extends StatelessWidget {
     final avgPlast = d.avgKgPerCrate(1);
     final pozostalo = (d.wagaNetto - pobrano).clamp(0.0, double.infinity);
     final progress  = d.wagaNetto > 0 ? (pobrano / d.wagaNetto).clamp(0.0, 1.0) : 0.0;
+    final totalSkrzynie = d.totalSkrzynie;
+    final skrzyniePobrane = totalSkrzynie > 0 && d.wagaNetto > 0
+        ? (pobrano * totalSkrzynie / d.wagaNetto).round().clamp(0, totalSkrzynie)
+        : 0;
+    final skrzyniePozostalo = totalSkrzynie - skrzyniePobrane;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -480,6 +485,36 @@ class _DeliveryCard extends StatelessWidget {
             _Row('Skrz. plast.',
                 '${d.skrzyniePlast} szt.'
                 '${avgPlast > 0 ? " · ~${fmt.format(avgPlast)} kg/szt." : ""}'),
+          if (totalSkrzynie > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: kSkanerPrimary.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: kSkanerAccent.withValues(alpha: 0.2)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.inventory_2_outlined, color: kSkanerAccent, size: 15),
+                const SizedBox(width: 8),
+                const Text('Skrzynie:',
+                    style: TextStyle(color: kSkanerTextSec, fontSize: 12)),
+                const Spacer(),
+                Text('Pobrano: $skrzyniePobrane szt.',
+                    style: const TextStyle(
+                        color: kSkanerTextSec, fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 10),
+                Text(
+                  'Zostało: $skrzyniePozostalo szt.',
+                  style: TextStyle(
+                    color: skrzyniePozostalo == 0 ? Colors.redAccent : kSkanerAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ]),
+            ),
+          ],
           if (pobrano > 0) ...[
             const Divider(color: kSkanerPrimary, height: 16),
             ClipRRect(
