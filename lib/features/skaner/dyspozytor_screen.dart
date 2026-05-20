@@ -974,6 +974,24 @@ class _WniosekTile extends StatelessWidget {
       pobrano = snap.docs.fold(0.0, (s, d) => s + ((d.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
     } catch (_) {}
 
+    // Walidacja: nie można pobrać więcej niż dostępne na stanie
+    if (limit > 0 && kg > 0) {
+      final pozostalo = limit - pobrano;
+      if (kg > pozostalo + 0.1) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              'Nie można zaakceptować — wniosek: ~${kg.toStringAsFixed(0)} kg, '
+              'pozostało na stanie: ${pozostalo.clamp(0, double.infinity).toStringAsFixed(0)} kg',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ));
+        }
+        return;
+      }
+    }
+
     final wagaPo = pobrano + kg;
 
     // 1. Aktualizuj wniosek

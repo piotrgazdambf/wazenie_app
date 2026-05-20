@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
+import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/crate_icon.dart';
@@ -64,10 +65,12 @@ class StanOdmiany {
     );
   }
 
-  double get kgOriginal =>
+  double get kgValue =>
       double.tryParse(wagaNetto.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
 
-  double get kgValue => (kgOriginal - pobranoKg).clamp(0.0, double.infinity);
+  // Efektywne pozostałe kg wg źródła prawdy (skaner_zejscia)
+  double effectiveKg(Map<String, double> zejsciaMap) =>
+      (kgValue - (zejsciaMap[lot] ?? 0.0)).clamp(0.0, double.infinity);
 }
 
 // ── Dane skrzyń per lot ────────────────────────────────────────────────────────
@@ -118,6 +121,22 @@ final crateInfoMapProvider = StreamProvider<Map<String, _CrateInfo>>((ref) {
 });
 
 // ── Provider ──────────────────────────────────────────────────────────────────
+
+// Suma pobranych kg per LOT – jedyne źródło prawdy (skaner_zejscia)
+final skanerZejsciaMapProvider = StreamProvider<Map<String, double>>((ref) {
+  return FirebaseFirestore.instance
+      .collection('skaner_zejscia')
+      .snapshots()
+      .map((snap) {
+    final map = <String, double>{};
+    for (final doc in snap.docs) {
+      final lot  = doc.data()['lot'] as String? ?? '';
+      final waga = (doc.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0;
+      map[lot] = (map[lot] ?? 0.0) + waga;
+    }
+    return map;
+  });
+});
 
 final stanyProvider = StreamProvider<List<StanOdmiany>>((ref) {
   return FirebaseFirestore.instance
@@ -192,12 +211,14 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
   List<Widget> _buildCards(
     List<StanOdmiany> entries,
     Map<String, _CrateInfo> crateMap,
+    Map<String, double> zejsciaMap,
     WidgetRef ref,
   ) {
     return entries.map((a) => _LotCard(
             entry: a,
             przeznaczenieColor: _przeznaczenieColor(a.przeznaczenie),
             crateInfo: crateMap[a.id],
+            pobrano: zejsciaMap[a.lot] ?? 0.0,
             onPrzeznaczenieChanged: () {
               ref.invalidate(stanyProvider);
               ref.invalidate(crateInfoMapProvider);
@@ -210,6 +231,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
     final stanyAsync    = ref.watch(stanyProvider);
     final crateMapAsync = ref.watch(crateInfoMapProvider);
     final crateMap      = crateMapAsync.value ?? {};
+    final zejsciaMap    = ref.watch(skanerZejsciaMapProvider).value ?? {};
 
     return OfflineOverflowGuard(
       child: Scaffold(
@@ -293,10 +315,10 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
                           return ListView(
                             padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
                             children: [
-                              _MagazynSummaryCard(entries: filtered),
+                              _MagazynSummaryCard(entries: filtered, zejsciaMap: zejsciaMap),
                               const SizedBox(height: 10),
                               if (filtered.isEmpty) const _EmptyView()
-                              else ..._buildCards(filtered, crateMap, ref),
+                              else ..._buildCards(filtered, crateMap, zejsciaMap, ref),
                             ],
                           );
                         },
@@ -307,7 +329,7 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
                   stanyAsync.when(
                     loading: () => const Center(child: CircularProgressIndicator()),
                     error: (e, _) => _ErrorView(message: e.toString()),
-                    data: (allEntries) => _DostawcyView(entries: allEntries),
+                    data: (allEntries) => _DostawcyView(entries: allEntries, zejsciaMap: zejsciaMap),
                   ),
                   // ── Tab 3: Akcje ──────────────────────────────────────
                   const _AkcjeView(),
@@ -325,8 +347,9 @@ class _StanyScreenState extends ConsumerState<StanyScreen>
 
 class _MagazynSummaryCard extends StatelessWidget {
   final List<StanOdmiany> entries;
+  final Map<String, double> zejsciaMap;
 
-  const _MagazynSummaryCard({required this.entries});
+  const _MagazynSummaryCard({required this.entries, required this.zejsciaMap});
 
   static const _columns = [
     (kod: 'P', label: 'PRZECIER',  color: Color(0xFF2E7D32)),
@@ -346,16 +369,17 @@ class _MagazynSummaryCard extends StatelessWidget {
       if (!jablkoByKod.containsKey(przKod)) continue;
       final owoc    = e.owoc.trim().toLowerCase();
       final odmiana = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
+      final kg = e.effectiveKg(zejsciaMap);
       if (owoc == 'jabłko' || owoc.contains('jab')) {
-        jablkoByKod[przKod]![odmiana]  = (jablkoByKod[przKod]![odmiana]  ?? 0) + e.kgValue;
+        jablkoByKod[przKod]![odmiana]  = (jablkoByKod[przKod]![odmiana]  ?? 0) + kg;
       } else if (owoc == 'gruszka' || owoc.contains('gruszk')) {
-        gruszkaByKod[przKod]![odmiana] = (gruszkaByKod[przKod]![odmiana] ?? 0) + e.kgValue;
+        gruszkaByKod[przKod]![odmiana] = (gruszkaByKod[przKod]![odmiana] ?? 0) + kg;
       } else {
-        inneByKod[przKod]![odmiana]    = (inneByKod[przKod]![odmiana]    ?? 0) + e.kgValue;
+        inneByKod[przKod]![odmiana]    = (inneByKod[przKod]![odmiana]    ?? 0) + kg;
       }
     }
 
-    final totalAll = entries.fold(0.0, (a, e) => a + e.kgValue);
+    final totalAll = entries.fold(0.0, (a, e) => a + e.effectiveKg(zejsciaMap));
 
     return Card(
       child: Padding(
@@ -481,7 +505,8 @@ class _MagazynSummaryCard extends StatelessWidget {
 
 class _DostawcyView extends StatelessWidget {
   final List<StanOdmiany> entries;
-  const _DostawcyView({required this.entries});
+  final Map<String, double> zejsciaMap;
+  const _DostawcyView({required this.entries, required this.zejsciaMap});
 
   @override
   Widget build(BuildContext context) {
@@ -494,7 +519,7 @@ class _DostawcyView extends StatelessWidget {
       final odmLabel = e.odmiana.trim().isEmpty ? e.owoc : e.odmiana.trim();
       final key = '${odmLabel}__${e.dostawcaKod}__${e.dostawca}';
       keyLabel[key] = '${_cap(odmLabel)}   ${e.dostawcaKod.isNotEmpty ? e.dostawcaKod : ''}  —  ${e.dostawca}';
-      byOwocKey[owoc]![key] = (byOwocKey[owoc]![key] ?? 0) + e.kgValue;
+      byOwocKey[owoc]![key] = (byOwocKey[owoc]![key] ?? 0) + e.effectiveKg(zejsciaMap);
     }
 
     if (byOwocKey.isEmpty) return const _EmptyView();
@@ -604,6 +629,7 @@ class _LotCard extends StatelessWidget {
   final StanOdmiany entry;
   final Color przeznaczenieColor;
   final _CrateInfo? crateInfo;
+  final double pobrano;
   final VoidCallback onPrzeznaczenieChanged;
 
   const _LotCard({
@@ -611,11 +637,17 @@ class _LotCard extends StatelessWidget {
     required this.przeznaczenieColor,
     required this.onPrzeznaczenieChanged,
     this.crateInfo,
+    this.pobrano = 0.0,
   });
 
   @override
   Widget build(BuildContext context) {
     final color = przeznaczenieColor;
+    final rawPozostalo = entry.kgValue - pobrano;
+    final pozostalo = rawPozostalo.clamp(0.0, double.infinity);
+    final isOverconsumed = rawPozostalo < -0.5;
+    final hasZejscie = pobrano > 0;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
       child: Padding(
@@ -649,17 +681,67 @@ class _LotCard extends StatelessWidget {
               Text(entry.data,
                   style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
               const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: color.withAlpha(25),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: color.withAlpha(80)),
+              if (hasZejscie)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isOverconsumed ? Colors.red.withAlpha(25) : AppTheme.primaryMid.withAlpha(20),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isOverconsumed ? Colors.red.withAlpha(80) : AppTheme.primaryMid.withAlpha(60),
+                    ),
+                  ),
+                  child: Text(
+                    isOverconsumed ? 'BŁĄD' : '${pozostalo.toStringAsFixed(0)} kg',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: isOverconsumed ? Colors.red : AppTheme.primaryMid,
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(25),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: color.withAlpha(80)),
+                  ),
+                  child: Text('${entry.kgValue.toStringAsFixed(0)} kg',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
                 ),
-                child: Text('${entry.kgValue.toStringAsFixed(0)} kg',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-              ),
             ]),
+            if (hasZejscie) ...[
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: entry.kgValue > 0
+                      ? (isOverconsumed ? 1.0 : pozostalo / entry.kgValue)
+                      : 0,
+                  minHeight: 4,
+                  backgroundColor: AppTheme.borderLight,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    isOverconsumed ? Colors.red : AppTheme.primaryMid,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Row(children: [
+                Text('Odjęto: ${pobrano.toStringAsFixed(0)} kg',
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                const SizedBox(width: 8),
+                if (isOverconsumed)
+                  Text(
+                    'PRZEKROCZONO! (limit: ${entry.kgValue.toStringAsFixed(0)} kg)',
+                    style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w700),
+                  )
+                else
+                  Text('z ${entry.kgValue.toStringAsFixed(0)} kg',
+                      style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+              ]),
+            ],
             const SizedBox(height: 4),
             // Wiersz 2: LOT
             Text(entry.lot,
@@ -1006,11 +1088,60 @@ class _EmptyView extends StatelessWidget {
 
 // ── Zakładka Akcje (podgląd zejść ze skanera) ─────────────────────────────────
 
-class _AkcjeView extends StatelessWidget {
+class _AkcjeView extends ConsumerWidget {
   const _AkcjeView();
 
+  Future<void> _cofnij(BuildContext context, String docId, String lot) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cofnij zejście'),
+        content: Text('Usunąć to zejście dla LOT $lot?\nStany zostaną automatycznie zaktualizowane.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cofnij', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      final db = FirebaseFirestore.instance;
+      await db.collection('skaner_zejscia').doc(docId).delete();
+
+      // Recompute pobrano_kg for that lot from remaining skaner_zejscia docs
+      final remaining = await db.collection('skaner_zejscia').where('lot', isEqualTo: lot).get();
+      final totalPobrano = remaining.docs.fold(0.0, (s, d) => s + ((d.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
+      final delivDocId = lot.replaceAll('/', '_');
+      final delivRef = db.collection(AppConstants.colDeliveries).doc(delivDocId);
+      final delivSnap = await delivRef.get();
+      if (delivSnap.exists) {
+        await delivRef.update({'pobrano_kg': totalPobrano});
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zejście cofnięte'), backgroundColor: AppTheme.primaryMid),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(currentSessionProvider);
+    final isAdmin = session?.user.isAdmin ?? false;
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('skaner_zejscia')
@@ -1049,7 +1180,8 @@ class _AkcjeView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
           itemCount: docs.length,
           itemBuilder: (_, i) {
-            final d        = docs[i].data() as Map<String, dynamic>;
+            final doc      = docs[i];
+            final d        = doc.data() as Map<String, dynamic>;
             final lot      = d['lot'] as String? ?? '';
             final owoc     = d['owoc'] as String? ?? '';
             final odmiana  = d['odmiana'] as String? ?? '';
@@ -1096,6 +1228,16 @@ class _AkcjeView extends StatelessWidget {
                         if (ts != null)
                           Text(timeFmt.format(ts),
                               style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                        if (isAdmin) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.undo, size: 18, color: AppTheme.errorRed),
+                            tooltip: 'Cofnij zejście',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            onPressed: () => _cofnij(context, doc.id, lot),
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 4),
