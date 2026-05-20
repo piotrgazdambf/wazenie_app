@@ -253,12 +253,36 @@ class _OczekujaceAccordion extends StatelessWidget {
           .where('status', isEqualTo: 'oczekujacy')
           .snapshots(),
       builder: (context, snap) {
-        final docs = (snap.data?.docs ?? [])
-          ..sort((a, b) {
-            final aMs = ((a.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            final bMs = ((b.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            return bMs.compareTo(aMs);
-          });
+        final rawDocs = List.of(snap.data?.docs ?? []);
+
+        // Posortuj wstępnie po czasie (rosnąco) — FIFO w ramach dostawcy
+        rawDocs.sort((a, b) {
+          final aMs = ((a.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+          final bMs = ((b.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+          return aMs.compareTo(bMs);
+        });
+
+        // Wyznacz czas pierwszego wniosku per dostawca (do sortowania grup)
+        final Map<String, int> dostawcaFirst = {};
+        for (final doc in rawDocs) {
+          final d2 = doc.data() as Map;
+          final key = (d2['dostawca'] as String?) ?? '';
+          final ms  = (d2['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+          dostawcaFirst.putIfAbsent(key, () => ms);
+        }
+
+        // Sortuj: najpierw po dostawcy (wg czasu 1. wniosku), potem chronologicznie
+        rawDocs.sort((a, b) {
+          final aD = (a.data() as Map)['dostawca'] as String? ?? '';
+          final bD = (b.data() as Map)['dostawca'] as String? ?? '';
+          final groupCmp = (dostawcaFirst[aD] ?? 0).compareTo(dostawcaFirst[bD] ?? 0);
+          if (groupCmp != 0) return groupCmp;
+          final aMs = ((a.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+          final bMs = ((b.data() as Map)['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+          return aMs.compareTo(bMs);
+        });
+
+        final docs = rawDocs;
         final count = docs.length;
 
         return Column(
@@ -956,7 +980,7 @@ class _WniosekTile extends StatelessWidget {
     final kg       = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
     final ts       = (d['created_at'] as Timestamp?)?.toDate();
     final fmt      = NumberFormat('#,##0', 'pl_PL');
-    final timeFmt  = DateFormat('dd.MM HH:mm');
+    final timeFmt  = DateFormat('dd.MM.yyyy  HH:mm');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -970,35 +994,65 @@ class _WniosekTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Wiersz 1: owoc/odmiana po lewej, LOT + dostawca po prawej
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
-                          style: const TextStyle(
-                              color: kSkanerAccent,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 2),
-                      Text(lot,
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 11, fontFamily: 'monospace')),
-                    ],
+                  child: Text(
+                    '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
+                    style: const TextStyle(
+                        color: kSkanerAccent,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700),
                   ),
                 ),
-                if (ts != null)
-                  Text(timeFmt.format(ts),
-                      style: const TextStyle(color: kSkanerTextSec, fontSize: 11)),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kSkanerPrimary.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: kSkanerAccent.withValues(alpha: 0.4)),
+                      ),
+                      child: Text(
+                        lot,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dostawca,
+                      style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text('Dostawca: $dostawca',
-                style: const TextStyle(color: kSkanerTextSec, fontSize: 12)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 10),
+            // Wiersz 2: czas + skrzynie/kg
             Row(
               children: [
+                if (ts != null) ...[
+                  const Icon(Icons.access_time, color: kSkanerAccent, size: 13),
+                  const SizedBox(width: 4),
+                  Text(
+                    timeFmt.format(ts),
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 _Chip('$ilosc skrz.', kSkanerPrimary),
                 const SizedBox(width: 8),
                 if (kg > 0) _Chip('~${fmt.format(kg)} kg', const Color(0xFF2D6A4F)),
