@@ -81,9 +81,12 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
   final _lotFocus      = FocusNode();
 
   _DeliveryInfo? _delivery;
+  double _pobrano = 0.0;
   bool _loading   = false;
   bool _sending   = false;
   String? _error;
+
+  double get _pozostalo => ((_delivery?.wagaNetto ?? 0.0) - _pobrano).clamp(0.0, double.infinity);
 
   @override
   void dispose() {
@@ -118,8 +121,20 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
         return;
       }
 
+      final delivInfo = _DeliveryInfo.fromFirestore(doc.data()!);
+
+      // Pobierz sumę już zdjętych kg dla tego LOT
+      final zejsciaSnap = await FirebaseFirestore.instance
+          .collection('skaner_zejscia')
+          .where('lot', isEqualTo: delivInfo.lot)
+          .get();
+      final pobrano = zejsciaSnap.docs.fold<double>(
+          0.0,
+          (s, d) => s + ((d.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
+
       setState(() {
-        _delivery = _DeliveryInfo.fromFirestore(doc.data()!);
+        _delivery = delivInfo;
+        _pobrano  = pobrano;
         _loading  = false;
       });
       // Przenieś fokus na pole ilości
@@ -139,14 +154,27 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
       return;
     }
 
+    // Szacunkowe kg
+    final kgPerCrate = delivery.totalSkrzynie > 0
+        ? delivery.wagaNetto / delivery.totalSkrzynie
+        : 0.0;
+    final kgSzacunek = ilosc * kgPerCrate;
+
+    // Walidacja: nie wysyłaj jeśli przekracza stan
+    if (kgSzacunek > _pozostalo + 0.1) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'Ilość nieprawidłowa — szacunek ~${kgSzacunek.toStringAsFixed(0)} kg '
+          'przekracza pozostałe ${_pozostalo.toStringAsFixed(0)} kg na stanie',
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ));
+      return;
+    }
+
     setState(() => _sending = true);
     try {
-      // Szacunkowe kg
-      final kgPerCrate = delivery.totalSkrzynie > 0
-          ? delivery.wagaNetto / delivery.totalSkrzynie
-          : 0.0;
-      final kgSzacunek = ilosc * kgPerCrate;
-
       await FirebaseFirestore.instance.collection('skaner_wnioski').add({
         'lot':           delivery.lot,
         'odmiana':       delivery.odmiana,
@@ -183,6 +211,7 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
         // Reset — gotowy na kolejny skan
         setState(() {
           _delivery = null;
+          _pobrano  = 0.0;
           _error    = null;
           _sending  = false;
           _lotCtrl.clear();
@@ -300,7 +329,7 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
             // ── Info o dostawie ──────────────────────────────────────────────
             if (_delivery != null) ...[
               const SizedBox(height: 20),
-              _DeliveryCard(delivery: _delivery!),
+              _DeliveryCard(delivery: _delivery!, pobrano: _pobrano),
               const SizedBox(height: 20),
 
               // ── Liczba skrzyń ────────────────────────────────────────────
@@ -344,7 +373,8 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
 
 class _DeliveryCard extends StatelessWidget {
   final _DeliveryInfo delivery;
-  const _DeliveryCard({required this.delivery});
+  final double pobrano;
+  const _DeliveryCard({required this.delivery, this.pobrano = 0.0});
 
   @override
   Widget build(BuildContext context) {
@@ -352,6 +382,8 @@ class _DeliveryCard extends StatelessWidget {
     final d   = delivery;
     final avgDrew  = d.avgKgPerCrate(0);
     final avgPlast = d.avgKgPerCrate(1);
+    final pozostalo = (d.wagaNetto - pobrano).clamp(0.0, double.infinity);
+    final progress  = d.wagaNetto > 0 ? (pobrano / d.wagaNetto).clamp(0.0, 1.0) : 0.0;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -384,6 +416,34 @@ class _DeliveryCard extends StatelessWidget {
             _Row('Skrz. plast.',
                 '${d.skrzyniePlast} szt.'
                 '${avgPlast > 0 ? " · ~${fmt.format(avgPlast)} kg/szt." : ""}'),
+          if (pobrano > 0) ...[
+            const Divider(color: kSkanerPrimary, height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: kSkanerPrimary.withValues(alpha: 0.3),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  progress > 0.9 ? Colors.redAccent : kSkanerAccent,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(children: [
+              Text('Pobrano: ${fmt.format(pobrano)} kg',
+                  style: const TextStyle(color: kSkanerTextSec, fontSize: 12)),
+              const Spacer(),
+              Text(
+                'Pozostało: ${fmt.format(pozostalo)} kg',
+                style: TextStyle(
+                  color: pozostalo < 100 ? Colors.redAccent : kSkanerAccent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ]),
+          ],
         ],
       ),
     );
