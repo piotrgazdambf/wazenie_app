@@ -64,8 +64,10 @@ class _DyspozytoScreenState extends ConsumerState<DyspozytoScreen> {
         ?? (session != null && !session.isExpired ? session.user : null);
 
     if (effectiveUser != null) {
+      final fromHome = session != null && !session.isExpired && _loggedUser == null;
       return _DyspozytoPanel(
         user: effectiveUser,
+        backRoute: fromHome ? '/home' : '/skaner',
         onLogout: () => setState(() { _loggedUser = null; _selected = null; _pin = ''; }),
       );
     }
@@ -184,7 +186,12 @@ class _DyspozytoScreenState extends ConsumerState<DyspozytoScreen> {
 class _DyspozytoPanel extends StatefulWidget {
   final AppUser user;
   final VoidCallback onLogout;
-  const _DyspozytoPanel({required this.user, required this.onLogout});
+  final String backRoute;
+  const _DyspozytoPanel({
+    required this.user,
+    required this.onLogout,
+    this.backRoute = '/skaner',
+  });
 
   @override
   State<_DyspozytoPanel> createState() => _DyspozytooPanelState();
@@ -200,7 +207,7 @@ class _DyspozytooPanelState extends State<_DyspozytoPanel> {
       appBar: AppBar(
         backgroundColor: kSkanerCard,
         foregroundColor: Colors.white,
-        leading: BackButton(onPressed: () => context.go('/skaner')),
+        leading: BackButton(onPressed: () => context.go(widget.backRoute)),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
