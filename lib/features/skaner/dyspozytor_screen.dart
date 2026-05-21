@@ -58,9 +58,14 @@ class _DyspozytoScreenState extends ConsumerState<DyspozytoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loggedUser != null) {
+    final session = ref.watch(currentSessionProvider);
+    // Jeśli jest aktywna sesja z głównej aplikacji → pomiń logowanie
+    final effectiveUser = _loggedUser
+        ?? (session != null && !session.isExpired ? session.user : null);
+
+    if (effectiveUser != null) {
       return _DyspozytoPanel(
-        user: _loggedUser!,
+        user: effectiveUser,
         onLogout: () => setState(() { _loggedUser = null; _selected = null; _pin = ''; }),
       );
     }
