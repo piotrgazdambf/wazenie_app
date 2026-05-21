@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
+import '../../core/kiosk_mode.dart';
 
 // ── Stany ekranu PIN ─────────────────────────────────────────────────────────
 
@@ -70,6 +71,94 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   void dispose() {
     _lockTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _activateKiosk(BuildContext context) async {
+    final ctrl = TextEditingController();
+    String? error;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          backgroundColor: const Color(0xFF1E3A5F),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: Colors.orangeAccent, size: 22),
+              SizedBox(width: 10),
+              Text('Blokada Skanera',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Wpisz kod aby zablokować urządzenie\nw trybie Skanera.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 4),
+                textAlign: TextAlign.center,
+                textCapitalization: TextCapitalization.characters,
+                onChanged: (_) => setS(() => error = null),
+                onSubmitted: (_) {
+                  if (ctrl.text.trim().toUpperCase() == kKioskCode) {
+                    Navigator.pop(ctx, true);
+                  } else {
+                    setS(() => error = 'Nieprawidłowy kod');
+                  }
+                },
+                decoration: InputDecoration(
+                  hintText: 'KOD',
+                  hintStyle: const TextStyle(color: Colors.white24),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.08),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  errorText: error,
+                  errorStyle: const TextStyle(color: Colors.orangeAccent),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Anuluj', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orangeAccent,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                if (ctrl.text.trim().toUpperCase() == kKioskCode) {
+                  Navigator.pop(ctx, true);
+                } else {
+                  setS(() => error = 'Nieprawidłowy kod');
+                }
+              },
+              child: const Text('Aktywuj', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    ctrl.dispose();
+    if (ok == true && mounted) {
+      ref.read(kioskModeProvider.notifier).state = true;
+      context.go('/skaner');
+    }
   }
 
   void _selectUser(AppUser user) {
@@ -210,6 +299,8 @@ class _PinScreenState extends ConsumerState<PinScreen> {
           ),
           const SizedBox(height: 32),
           _SkanerButton(onTap: () => context.go('/skaner')),
+          const SizedBox(height: 12),
+          _KioskButton(onTap: () => _activateKiosk(context)),
           const SizedBox(height: 32),
         ],
       ),
@@ -353,6 +444,58 @@ class _SkanerButton extends StatelessWidget {
                 ),
               ),
               const Icon(Icons.chevron_right, color: Colors.white54),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Widget: przycisk blokady skanera ─────────────────────────────────────────
+
+class _KioskButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _KioskButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.orangeAccent.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: Colors.orangeAccent.withValues(alpha: 0.2),
+                child: const Icon(Icons.lock_outline, color: Colors.orangeAccent, size: 22),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Blokada Skanera',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Zablokuj urządzenie w trybie skanera',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white38),
             ],
           ),
         ),
