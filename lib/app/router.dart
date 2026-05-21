@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/auth/pin_auth_service.dart';
 import '../core/firebase/remote_config_service.dart';
+import '../core/kiosk_mode.dart';
 import '../core/models/kw_data.dart';
 import '../features/admin/catalog_screen.dart';
 import '../features/admin/sync_screen.dart';
@@ -30,6 +31,7 @@ class _RouterNotifier extends ChangeNotifier {
   _RouterNotifier(Ref ref) {
     ref.listen<AsyncValue<bool>>(forceUpdateProvider, (_, __) => notifyListeners());
     ref.listen<AuthSession?>(currentSessionProvider, (_, __) => notifyListeners());
+    ref.listen<AsyncValue<bool>>(kioskModeProvider, (_, __) => notifyListeners());
   }
 }
 
@@ -55,6 +57,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       final forceUpdate = forceUpdateAsync.value ?? false;
       if (forceUpdate && path != '/force-update') return '/force-update';
       if (!forceUpdate && path == '/force-update') return '/login';
+
+      // Kiosk mode — urządzenie zablokowane w trybie skanera
+      final kioskAsync = ref.read(kioskModeProvider);
+      if (kioskAsync.isLoading) {
+        return path == '/splash' ? null : '/splash';
+      }
+      final kioskActive = kioskAsync.value ?? false;
+      if (kioskActive && !path.startsWith('/skaner')) return '/skaner';
 
       // Auth
       final session = ref.read(currentSessionProvider);

@@ -112,14 +112,15 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
 
     ctrl.dispose();
     if (ok == true && mounted) {
-      ref.read(kioskModeProvider.notifier).state = false;
-      context.go('/login');
+      await ref.read(kioskModeProvider.notifier).deactivate();
+      if (mounted) context.go('/login');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final kioskMode = ref.watch(kioskModeProvider);
+    final kioskAsync = ref.watch(kioskModeProvider);
+    final kioskMode  = kioskAsync.value ?? false;
 
     return PopScope(
       canPop: !kioskMode,

@@ -156,8 +156,8 @@ class _PinScreenState extends ConsumerState<PinScreen> {
 
     ctrl.dispose();
     if (ok == true && mounted) {
-      ref.read(kioskModeProvider.notifier).state = true;
-      context.go('/skaner');
+      await ref.read(kioskModeProvider.notifier).activate();
+      if (mounted) context.go('/skaner');
     }
   }
 
