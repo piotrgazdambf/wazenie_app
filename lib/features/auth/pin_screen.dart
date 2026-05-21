@@ -298,8 +298,6 @@ class _PinScreenState extends ConsumerState<PinScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          _SkanerButton(onTap: () => context.go('/skaner')),
-          const SizedBox(height: 12),
           _KioskButton(onTap: () => _activateKiosk(context)),
           const SizedBox(height: 32),
         ],

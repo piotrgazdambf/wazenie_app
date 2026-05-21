@@ -35,7 +35,10 @@ class HomeScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   // Pozdrowienie
-                  _WelcomeCard(user: user),
+                  _WelcomeCard(
+                    user: user,
+                    onSkanerTap: () => context.go('/skaner/dyspozytor'),
+                  ),
                   const SizedBox(height: 20),
 
                   // Moduły
@@ -160,7 +163,8 @@ class HomeScreen extends ConsumerWidget {
 
 class _WelcomeCard extends StatelessWidget {
   final AppUser? user;
-  const _WelcomeCard({this.user});
+  final VoidCallback onSkanerTap;
+  const _WelcomeCard({this.user, required this.onSkanerTap});
 
   @override
   Widget build(BuildContext context) {
@@ -198,6 +202,22 @@ class _WelcomeCard extends StatelessWidget {
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF52B788),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+            onPressed: onSkanerTap,
+            icon: const Icon(Icons.qr_code_scanner, size: 20),
+            label: const Text(
+              'Skaner',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
             ),
           ),
         ],
