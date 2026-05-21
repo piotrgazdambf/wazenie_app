@@ -635,7 +635,9 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
           _wagaCtrl.clear();
           _iloscCtrl.clear();
         });
-        _lotFocus.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _lotFocus.requestFocus();
+        });
       }
     } catch (e) {
       setState(() => _sending = false);

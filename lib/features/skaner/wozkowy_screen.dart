@@ -301,7 +301,9 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
           _lotCtrl.clear();
           _iloscCtrl.clear();
         });
-        _lotFocus.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _lotFocus.requestFocus();
+        });
       }
     } catch (e) {
       setState(() => _sending = false);
