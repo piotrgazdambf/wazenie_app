@@ -692,17 +692,17 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
           Row(
             children: [
               Expanded(child: _MetodaChip(
-                label: 'Waga netto [kg]',
-                icon: Icons.scale_outlined,
-                selected: _useWaga,
-                onTap: () => setState(() { _useWaga = true; _iloscCtrl.clear(); }),
-              )),
-              const SizedBox(width: 10),
-              Expanded(child: _MetodaChip(
                 label: 'Skrzynie [szt.]',
                 icon: Icons.inventory_2_outlined,
                 selected: !_useWaga,
                 onTap: () => setState(() { _useWaga = false; _wagaCtrl.clear(); }),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: _MetodaChip(
+                label: 'Waga netto [kg]',
+                icon: Icons.scale_outlined,
+                selected: _useWaga,
+                onTap: () => setState(() { _useWaga = true; _iloscCtrl.clear(); }),
               )),
             ],
           ),
@@ -1107,69 +1107,86 @@ class _WniosekTile extends StatelessWidget {
 
   Future<void> _edytuj(
       BuildContext context, String id, Map<String, dynamic> d) async {
+    final origIlosc = (d['skrzynie_ilosc'] as int? ?? 0);
+    final origKg    = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
+    // kg na 1 skrzynię — podstawa do przeliczania
+    final kgPerBox  = origIlosc > 0 ? origKg / origIlosc : 0.0;
+
     final lotCtrl   = TextEditingController(text: d['lot'] as String? ?? '');
-    final iloscCtrl = TextEditingController(
-        text: (d['skrzynie_ilosc'] as int? ?? 0).toString());
-    final kgCtrl    = TextEditingController(
-        text: ((d['kg_szacunek'] as num?)?.toDouble() ?? 0.0)
-            .toStringAsFixed(0));
+    final iloscCtrl = TextEditingController(text: origIlosc.toString());
+    final kgCtrl    = TextEditingController(text: origKg.toStringAsFixed(0));
 
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.edit, color: Color(0xFF4A90D9), size: 22),
-            SizedBox(width: 10),
-            Text('Edytuj wniosek',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _editField(lotCtrl,   'LOT',             Icons.qr_code,    TextInputType.text),
-            const SizedBox(height: 12),
-            _editField(iloscCtrl, 'Ilość skrzyń',    Icons.inventory_2, TextInputType.number),
-            const SizedBox(height: 12),
-            _editField(kgCtrl,    'Waga netto (kg)', Icons.scale,       TextInputType.number),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Anuluj',
-                style: TextStyle(color: Colors.white54)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.edit, color: Color(0xFF4A90D9), size: 22),
+              SizedBox(width: 10),
+              Text('Edytuj wniosek',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4A90D9),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _editField(lotCtrl, 'LOT', Icons.qr_code, TextInputType.text),
+              const SizedBox(height: 12),
+              // Ilość skrzyń — zmiana auto-przelicza kg
+              TextField(
+                controller: iloscCtrl,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white),
+                onChanged: (val) {
+                  if (kgPerBox > 0) {
+                    final n = int.tryParse(val.trim()) ?? 0;
+                    kgCtrl.text = (n * kgPerBox).toStringAsFixed(0);
+                  }
+                },
+                decoration: _editDeco('Ilość skrzyń', Icons.inventory_2),
+              ),
+              const SizedBox(height: 12),
+              _editField(kgCtrl, 'Waga netto (kg)', Icons.scale,
+                  const TextInputType.numberWithOptions(decimal: true)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Anuluj',
+                  style: TextStyle(color: Colors.white54)),
             ),
-            onPressed: () async {
-              final newLot   = lotCtrl.text.trim();
-              final newIlosc = int.tryParse(iloscCtrl.text.trim()) ?? 0;
-              final newKg    = double.tryParse(
-                      kgCtrl.text.trim().replaceAll(',', '.')) ??
-                  0.0;
-              await FirebaseFirestore.instance
-                  .collection('skaner_wnioski')
-                  .doc(id)
-                  .update({
-                'lot':            newLot,
-                'skrzynie_ilosc': newIlosc,
-                'kg_szacunek':    newKg,
-              });
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Zapisz',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4A90D9),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final newLot   = lotCtrl.text.trim();
+                final newIlosc = int.tryParse(iloscCtrl.text.trim()) ?? 0;
+                final newKg    = double.tryParse(
+                        kgCtrl.text.trim().replaceAll(',', '.')) ??
+                    0.0;
+                await FirebaseFirestore.instance
+                    .collection('skaner_wnioski')
+                    .doc(id)
+                    .update({
+                  'lot':            newLot,
+                  'skrzynie_ilosc': newIlosc,
+                  'kg_szacunek':    newKg,
+                });
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Zapisz',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -1178,13 +1195,7 @@ class _WniosekTile extends StatelessWidget {
     kgCtrl.dispose();
   }
 
-  Widget _editField(TextEditingController ctrl, String label,
-      IconData icon, TextInputType inputType) {
-    return TextField(
-      controller: ctrl,
-      keyboardType: inputType,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
+  InputDecoration _editDeco(String label, IconData icon) => InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.white54),
         prefixIcon: Icon(icon, color: const Color(0xFF4A90D9), size: 20),
@@ -1202,7 +1213,15 @@ class _WniosekTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Color(0xFF4A90D9), width: 2),
         ),
-      ),
+      );
+
+  Widget _editField(TextEditingController ctrl, String label,
+      IconData icon, TextInputType inputType) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: inputType,
+      style: const TextStyle(color: Colors.white),
+      decoration: _editDeco(label, icon),
     );
   }
 
