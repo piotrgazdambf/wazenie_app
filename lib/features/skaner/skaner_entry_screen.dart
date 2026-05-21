@@ -135,10 +135,10 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 // Logo / nagłówek
-                const Icon(Icons.qr_code_scanner, color: kSkanerAccent, size: 52),
-                const SizedBox(height: 12),
+                const Icon(Icons.qr_code_scanner, color: kSkanerAccent, size: 48),
+                const SizedBox(height: 8),
                 const Text(
                   'Skaner',
                   style: TextStyle(
@@ -148,7 +148,7 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                     letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   kioskMode ? 'Tryb kiosku — urządzenie zablokowane' : 'Wybierz tryb pracy',
                   style: TextStyle(
@@ -156,7 +156,7 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 24),
                 // Kafelek — Wózkowy
                 _ModeTile(
                   label: 'Wózkowy',
@@ -167,7 +167,7 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                   borderColor: const Color(0xFF2D6A4F),
                   onTap: () => context.go('/skaner/wozkowy'),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 // Kafelek — Dyspozytor
                 _ModeTile(
                   label: 'Dyspozytor',
@@ -178,24 +178,24 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                   borderColor: const Color(0xFF40916C),
                   onTap: () => context.go('/skaner/dyspozytor'),
                 ),
-                const Spacer(),
+                const SizedBox(height: 32),
                 // Wróć / Wyjście z kiosku
                 if (kioskMode)
                   SizedBox(
                     width: double.infinity,
-                    height: 52,
+                    height: 64,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.orangeAccent,
-                        side: const BorderSide(color: Colors.orangeAccent),
+                        side: const BorderSide(color: Colors.orangeAccent, width: 2),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                            borderRadius: BorderRadius.circular(16)),
                       ),
                       onPressed: () => _deactivateKiosk(context),
-                      icon: const Icon(Icons.lock_open, size: 20),
+                      icon: const Icon(Icons.lock_open, size: 24),
                       label: const Text(
                         'Wyjście (wpisz kod)',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                       ),
                     ),
                   )
@@ -208,7 +208,7 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                       style: TextStyle(color: kSkanerTextSec, fontSize: 13),
                     ),
                   ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
               ],
             ),
           ),
