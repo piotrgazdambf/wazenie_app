@@ -408,7 +408,7 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
   bool _loading  = false;
   bool _sending  = false;
   String? _error;
-  bool _useWaga  = true;           // true = waga netto, false = skrzynie
+  bool _useWaga  = false;          // true = waga netto, false = skrzynie
 
   @override
   void dispose() {
