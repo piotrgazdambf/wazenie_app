@@ -181,12 +181,22 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                 const Spacer(),
                 // Wróć / Wyjście z kiosku
                 if (kioskMode)
-                  TextButton.icon(
-                    onPressed: () => _deactivateKiosk(context),
-                    icon: const Icon(Icons.lock_open, color: Colors.orangeAccent, size: 14),
-                    label: const Text(
-                      'Wyjście (wpisz kod)',
-                      style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orangeAccent,
+                        side: const BorderSide(color: Colors.orangeAccent),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => _deactivateKiosk(context),
+                      icon: const Icon(Icons.lock_open, size: 20),
+                      label: const Text(
+                        'Wyjście (wpisz kod)',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
                     ),
                   )
                 else
@@ -198,6 +208,7 @@ class _SkanerEntryScreenState extends ConsumerState<SkanerEntryScreen> {
                       style: TextStyle(color: kSkanerTextSec, fontSize: 13),
                     ),
                   ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
