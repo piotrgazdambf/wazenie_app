@@ -1059,6 +1059,19 @@ class _WniosekTile extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF4A90D9),
+                  side: const BorderSide(color: Color(0xFF4A90D9)),
+                ),
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('Edytuj'),
+                onPressed: () => _edytuj(context, doc.id, d),
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -1087,6 +1100,107 @@ class _WniosekTile extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _edytuj(
+      BuildContext context, String id, Map<String, dynamic> d) async {
+    final lotCtrl   = TextEditingController(text: d['lot'] as String? ?? '');
+    final iloscCtrl = TextEditingController(
+        text: (d['skrzynie_ilosc'] as int? ?? 0).toString());
+    final kgCtrl    = TextEditingController(
+        text: ((d['kg_szacunek'] as num?)?.toDouble() ?? 0.0)
+            .toStringAsFixed(0));
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.edit, color: Color(0xFF4A90D9), size: 22),
+            SizedBox(width: 10),
+            Text('Edytuj wniosek',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _editField(lotCtrl,   'LOT',             Icons.qr_code,    TextInputType.text),
+            const SizedBox(height: 12),
+            _editField(iloscCtrl, 'Ilość skrzyń',    Icons.inventory_2, TextInputType.number),
+            const SizedBox(height: 12),
+            _editField(kgCtrl,    'Waga netto (kg)', Icons.scale,       TextInputType.number),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Anuluj',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4A90D9),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              final newLot   = lotCtrl.text.trim();
+              final newIlosc = int.tryParse(iloscCtrl.text.trim()) ?? 0;
+              final newKg    = double.tryParse(
+                      kgCtrl.text.trim().replaceAll(',', '.')) ??
+                  0.0;
+              await FirebaseFirestore.instance
+                  .collection('skaner_wnioski')
+                  .doc(id)
+                  .update({
+                'lot':            newLot,
+                'skrzynie_ilosc': newIlosc,
+                'kg_szacunek':    newKg,
+              });
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Zapisz',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    lotCtrl.dispose();
+    iloscCtrl.dispose();
+    kgCtrl.dispose();
+  }
+
+  Widget _editField(TextEditingController ctrl, String label,
+      IconData icon, TextInputType inputType) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: inputType,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white54),
+        prefixIcon: Icon(icon, color: const Color(0xFF4A90D9), size: 20),
+        filled: true,
+        fillColor: const Color(0xFF0D0D1A),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFF4A90D9)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFF4A90D9), width: 2),
         ),
       ),
     );
