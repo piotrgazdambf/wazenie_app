@@ -409,9 +409,27 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
   bool _sending  = false;
   String? _error;
   bool _useWaga  = false;          // true = waga netto, false = skrzynie
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _lotCtrl.addListener(_onLotChanged);
+  }
+
+  void _onLotChanged() {
+    _debounce?.cancel();
+    final text = _lotCtrl.text.trim();
+    if (text.isEmpty) return;
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _lookupLot(text);
+    });
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _lotCtrl.removeListener(_onLotChanged);
     _lotCtrl.dispose();
     _wagaCtrl.dispose();
     _iloscCtrl.dispose();

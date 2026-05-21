@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -85,11 +87,29 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
   bool _loading   = false;
   bool _sending   = false;
   String? _error;
+  Timer? _debounce;
 
   double get _pozostalo => ((_delivery?.wagaNetto ?? 0.0) - _pobrano).clamp(0.0, double.infinity);
 
   @override
+  void initState() {
+    super.initState();
+    _lotCtrl.addListener(_onLotChanged);
+  }
+
+  void _onLotChanged() {
+    _debounce?.cancel();
+    final text = _lotCtrl.text.trim();
+    if (text.isEmpty) return;
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _lookupLot(text);
+    });
+  }
+
+  @override
   void dispose() {
+    _debounce?.cancel();
+    _lotCtrl.removeListener(_onLotChanged);
     _lotCtrl.dispose();
     _iloscCtrl.dispose();
     _lotFocus.dispose();
