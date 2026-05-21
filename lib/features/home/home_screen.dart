@@ -205,19 +205,23 @@ class _WelcomeCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF52B788),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 0,
-            ),
-            onPressed: onSkanerTap,
-            icon: const Icon(Icons.qr_code_scanner, size: 20),
-            label: const Text(
-              'Skaner',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          SizedBox(
+            width: 110,
+            height: 44,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF52B788),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              onPressed: onSkanerTap,
+              icon: const Icon(Icons.qr_code_scanner, size: 18),
+              label: const Text(
+                'Skaner',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
             ),
           ),
         ],
