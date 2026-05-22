@@ -84,12 +84,14 @@ class CrateAction {
   final int drewZdj;
   final int plastZdj;
   final DateTime? createdAt;
+  final String userName;
 
   const CrateAction({
     required this.id, required this.dostawca, required this.lot,
     required this.owoc, required this.odmiana, required this.przeznaczenie,
     required this.nrDostawy, required this.data, required this.akcja,
     required this.drewZdj, required this.plastZdj, this.createdAt,
+    this.userName = '',
   });
 
   factory CrateAction.fromFirestore(String id, Map<String, dynamic> d) {
@@ -106,6 +108,7 @@ class CrateAction {
       drewZdj:  (d['drew_zdj']  as num?)?.toInt() ?? 0,
       plastZdj: (d['plast_zdj'] as num?)?.toInt() ?? 0,
       createdAt: parseTs(d['createdAt']),
+      userName: d['user_name'] as String? ?? '',
     );
   }
 }
@@ -181,7 +184,8 @@ class _StanyTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(crateStatesProvider);
+    final async    = ref.watch(crateStatesProvider);
+    final userName = ref.watch(currentSessionProvider)?.user.name ?? '';
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Błąd: $e')),
@@ -259,7 +263,7 @@ class _StanyTab extends ConsumerWidget {
                   final isLast = i == sorted.length - 1;
                   final isAdmin = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
                   return InkWell(
-                    onTap: () => _showDostawcaLots(context, e.key, e.value.lots),
+                    onTap: () => _showDostawcaLots(context, e.key, e.value.lots, userName),
                     child: Container(
                       decoration: BoxDecoration(
                         color: i.isEven ? Colors.white : AppTheme.background,
@@ -303,7 +307,7 @@ class _StanyTab extends ConsumerWidget {
                               icon: const Icon(Icons.settings, size: 16, color: AppTheme.textSecondary),
                               padding: EdgeInsets.zero,
                               tooltip: 'Korekta skrzyń',
-                              onPressed: () => _showKorekta(context, e.key, e.value.lots),
+                              onPressed: () => _showKorekta(context, e.key, e.value.lots, userName),
                             ),
                           ),
                       ]),
@@ -318,19 +322,19 @@ class _StanyTab extends ConsumerWidget {
     );
   }
 
-  void _showDostawcaLots(BuildContext context, String dostawca, List<CrateState> lots) {
+  void _showDostawcaLots(BuildContext context, String dostawca, List<CrateState> lots, String userName) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _DostawcaLotsSheet(dostawca: dostawca, lots: lots),
+      builder: (_) => _DostawcaLotsSheet(dostawca: dostawca, lots: lots, userName: userName),
     );
   }
 
-  void _showKorekta(BuildContext context, String dostawca, List<CrateState> lots) {
+  void _showKorekta(BuildContext context, String dostawca, List<CrateState> lots, String userName) {
     showDialog<void>(
       context: context,
-      builder: (_) => _KorektaDialog(dostawca: dostawca, lots: lots),
+      builder: (_) => _KorektaDialog(dostawca: dostawca, lots: lots, userName: userName),
     );
   }
 }
@@ -352,7 +356,8 @@ class _SumBadge extends StatelessWidget {
 class _DostawcaLotsSheet extends StatelessWidget {
   final String dostawca;
   final List<CrateState> lots;
-  const _DostawcaLotsSheet({required this.dostawca, required this.lots});
+  final String userName;
+  const _DostawcaLotsSheet({required this.dostawca, required this.lots, required this.userName});
 
   @override
   Widget build(BuildContext context) {
@@ -406,7 +411,7 @@ class _DostawcaLotsSheet extends StatelessWidget {
                               Navigator.of(context).pop();
                               showDialog<void>(
                                 context: context,
-                                builder: (_) => _ZdejmijWszystkieDialog(dostawca: dostawca, lots: lots),
+                                builder: (_) => _ZdejmijWszystkieDialog(dostawca: dostawca, lots: lots, userName: userName),
                               );
                             } : null,
                             icon: const Icon(Icons.remove_circle_outline, size: 16),
@@ -450,7 +455,7 @@ class _DostawcaLotsSheet extends StatelessWidget {
                                   Navigator.of(context).pop();
                                   showDialog<void>(
                                     context: context,
-                                    builder: (_) => _ZdejmijDialog(state: c),
+                                    builder: (_) => _ZdejmijDialog(state: c, userName: userName),
                                   );
                                 }
                               : null,
@@ -580,7 +585,13 @@ class _AkcjeTab extends ConsumerWidget {
                         style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                       ),
-                    Text(dateStr, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                    Row(children: [
+                      Text(dateStr, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                      if (a.userName.isNotEmpty) ...[
+                        const Text('  •  ', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                        Text(a.userName, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                      ],
+                    ]),
                   ])),
                   if (isAdmin)
                     IconButton(
@@ -602,7 +613,8 @@ class _AkcjeTab extends ConsumerWidget {
 
 class _ZdejmijDialog extends StatefulWidget {
   final CrateState state;
-  const _ZdejmijDialog({required this.state});
+  final String userName;
+  const _ZdejmijDialog({required this.state, required this.userName});
 
   @override
   State<_ZdejmijDialog> createState() => _ZdejmijDialogState();
@@ -649,6 +661,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
         'nr_dostawy': s.nrDostawy, 'data': s.data,
         'akcja': 'Zejście',
         'drew_zdj': _drewN, 'plast_zdj': _plastN,
+        'user_name': widget.userName,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -789,7 +802,8 @@ class _EmptyView extends StatelessWidget {
 class _ZdejmijWszystkieDialog extends StatefulWidget {
   final String dostawca;
   final List<CrateState> lots;
-  const _ZdejmijWszystkieDialog({required this.dostawca, required this.lots});
+  final String userName;
+  const _ZdejmijWszystkieDialog({required this.dostawca, required this.lots, required this.userName});
 
   @override
   State<_ZdejmijWszystkieDialog> createState() => _ZdejmijWszystkieDialogState();
@@ -852,6 +866,7 @@ class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
         'akcja':        'Zejście',
         'drew_zdj':     _drewN,
         'plast_zdj':    _plastN,
+        'user_name':    widget.userName,
         'createdAt':    FieldValue.serverTimestamp(),
       });
 
@@ -949,7 +964,8 @@ class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
 class _KorektaDialog extends StatefulWidget {
   final String dostawca;
   final List<CrateState> lots;
-  const _KorektaDialog({required this.dostawca, required this.lots});
+  final String userName;
+  const _KorektaDialog({required this.dostawca, required this.lots, required this.userName});
 
   @override
   State<_KorektaDialog> createState() => _KorektaDialogState();
@@ -1005,6 +1021,7 @@ class _KorektaDialogState extends State<_KorektaDialog> {
         'drew_delta':  drewDelta,
         'plast_delta': plastDelta,
         'notatka':     _noteCtrl.text.trim(),
+        'user_name':   widget.userName,
         'createdAt':   FieldValue.serverTimestamp(),
       });
 

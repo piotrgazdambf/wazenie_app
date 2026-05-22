@@ -5,6 +5,7 @@ import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/crate_icon.dart';
+import '../skaner/dyspozytor_screen.dart' show skanerOczekujaceCountProvider;
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -161,13 +162,14 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _WelcomeCard extends StatelessWidget {
+class _WelcomeCard extends ConsumerWidget {
   final AppUser? user;
   final VoidCallback onSkanerTap;
   const _WelcomeCard({this.user, required this.onSkanerTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pendingCount = ref.watch(skanerOczekujaceCountProvider).valueOrNull ?? 0;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -205,24 +207,52 @@ class _WelcomeCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          SizedBox(
-            width: 130,
-            height: 52,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF52B788),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 0,
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              SizedBox(
+                width: 130,
+                height: 52,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF52B788),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  onPressed: onSkanerTap,
+                  icon: const Icon(Icons.qr_code_scanner, size: 22),
+                  label: const Text(
+                    'Skaner',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                ),
               ),
-              onPressed: onSkanerTap,
-              icon: const Icon(Icons.qr_code_scanner, size: 22),
-              label: const Text(
-                'Skaner',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-            ),
+              if (pendingCount > 0)
+                Positioned(
+                  top: -6,
+                  right: -6,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                    child: Text(
+                      '$pendingCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),

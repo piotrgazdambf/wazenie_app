@@ -9,6 +9,16 @@ import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import 'skaner_entry_screen.dart';
 
+// ── Provider: liczba oczekujących wniosków ────────────────────────────────────
+
+final skanerOczekujaceCountProvider = StreamProvider<int>((ref) {
+  return FirebaseFirestore.instance
+      .collection('skaner_wnioski')
+      .where('status', isEqualTo: 'oczekujacy')
+      .snapshots()
+      .map((snap) => snap.docs.length);
+});
+
 // ── Ekran Dyspozytora ─────────────────────────────────────────────────────────
 
 class DyspozytoScreen extends ConsumerStatefulWidget {
@@ -671,7 +681,7 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
         TextField(
           controller: _lotCtrl,
           focusNode: _lotFocus,
-          autofocus: false,
+          autofocus: true,
           style: const TextStyle(color: Colors.white, fontSize: 15),
           decoration: InputDecoration(
             hintText: 'Zeskanuj lub wpisz LOT...',
@@ -1054,7 +1064,7 @@ class _WniosekTile extends StatelessWidget {
                         lot,
                         style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: 13,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w700),
                       ),
@@ -1064,7 +1074,7 @@ class _WniosekTile extends StatelessWidget {
                       dostawca,
                       style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 11,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600),
                     ),
                   ],
@@ -1141,87 +1151,222 @@ class _WniosekTile extends StatelessWidget {
       BuildContext context, String id, Map<String, dynamic> d) async {
     final origIlosc = (d['skrzynie_ilosc'] as int? ?? 0);
     final origKg    = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
-    // kg na 1 skrzynię — podstawa do przeliczania
-    final kgPerBox  = origIlosc > 0 ? origKg / origIlosc : 0.0;
 
     final lotCtrl   = TextEditingController(text: d['lot'] as String? ?? '');
     final iloscCtrl = TextEditingController(text: origIlosc.toString());
     final kgCtrl    = TextEditingController(text: origKg.toStringAsFixed(0));
 
+    double kgPerBox = origIlosc > 0 ? origKg / origIlosc : 0.0;
+    String dostawca = d['dostawca'] as String? ?? '';
+    String owoc     = d['owoc']     as String? ?? '';
+    String odmiana  = d['odmiana']  as String? ?? '';
+    bool   lotFound = true;
+    bool   fetching = false;
+    bool   closed   = false;
+    Timer? lotTimer;
+    void Function(void Function())? _setDialog;
+
+    Future<void> fetchLot(String lot) async {
+      if (lot.isEmpty) return;
+      _setDialog?.call(() => fetching = true);
+      try {
+        final db    = FirebaseFirestore.instance;
+        final docId = lot.replaceAll('/', '_');
+        var delivDoc = await db.collection(AppConstants.colDeliveries).doc(docId).get();
+        if (!delivDoc.exists) {
+          final q = await db.collection(AppConstants.colDeliveries)
+              .where('lot', isEqualTo: lot).limit(1).get();
+          if (q.docs.isNotEmpty) {
+            delivDoc = q.docs.first as DocumentSnapshot<Map<String, dynamic>>;
+          }
+        }
+        if (closed) return;
+        if (delivDoc.exists) {
+          final data      = delivDoc.data()!;
+          final rawKg     = (data['waga_netto'] ?? '').toString()
+              .replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '');
+          final wagaNetto = double.tryParse(rawKg) ?? 0.0;
+          final drew  = (data['skrzynie_drew']  as int?) ?? 0;
+          final plast = (data['skrzynie_plast'] as int?) ?? 0;
+          final total = drew + plast;
+          _setDialog?.call(() {
+            dostawca = data['dostawca'] as String? ?? '';
+            owoc     = data['owoc']     as String? ?? '';
+            odmiana  = data['odmiana']  as String? ?? '';
+            kgPerBox = total > 0 && wagaNetto > 0 ? wagaNetto / total : kgPerBox;
+            lotFound = true;
+            fetching = false;
+            iloscCtrl.clear();
+            kgCtrl.clear();
+          });
+        } else {
+          if (!closed) _setDialog?.call(() { lotFound = false; fetching = false; });
+        }
+      } catch (_) {
+        if (!closed) _setDialog?.call(() { lotFound = false; fetching = false; });
+      }
+    }
+
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setStateDialog) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A2E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.edit, color: Color(0xFF4A90D9), size: 22),
-              SizedBox(width: 10),
-              Text('Edytuj wniosek',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _editField(lotCtrl, 'LOT', Icons.qr_code, TextInputType.text),
-              const SizedBox(height: 12),
-              // Ilość skrzyń — zmiana auto-przelicza kg
-              TextField(
-                controller: iloscCtrl,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white),
-                onChanged: (val) {
-                  if (kgPerBox > 0) {
-                    final n = int.tryParse(val.trim()) ?? 0;
-                    kgCtrl.text = (n * kgPerBox).toStringAsFixed(0);
+        builder: (ctx, setS) {
+          _setDialog = setS;
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A2E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.edit, color: Color(0xFF4A90D9), size: 22),
+                SizedBox(width: 10),
+                Text('Edytuj wniosek',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // LOT — zmiana triggeruje pobranie danych dostawy
+                TextField(
+                  controller: lotCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  cursorColor: Colors.white,
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (val) {
+                    lotTimer?.cancel();
+                    lotTimer = Timer(const Duration(milliseconds: 600),
+                        () => fetchLot(val.trim()));
+                  },
+                  decoration: _editDeco('LOT', Icons.qr_code),
+                ),
+                const SizedBox(height: 8),
+                // Info o dostawie pod polem LOT
+                if (fetching)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Color(0xFF4A90D9))),
+                      SizedBox(width: 8),
+                      Text('Szukam dostawy...',
+                          style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ]),
+                  )
+                else if (!lotFound)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: const [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.orangeAccent, size: 16),
+                      SizedBox(width: 6),
+                      Text('Nie znaleziono dostawy',
+                          style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                    ]),
+                  )
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D0D1A),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: const Color(0xFF4A90D9).withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.eco, color: kSkanerAccent, size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(
+                            '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
+                            style: const TextStyle(
+                                color: kSkanerAccent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
+                          )),
+                        ]),
+                        if (dostawca.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(children: [
+                            const Icon(Icons.person_outline,
+                                color: kSkanerTextSec, size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(dostawca,
+                                style: const TextStyle(
+                                    color: kSkanerTextSec, fontSize: 12))),
+                          ]),
+                        ],
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                // Ilość skrzyń — auto-przelicza kg wg aktualnego kgPerBox
+                TextField(
+                  controller: iloscCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  cursorColor: Colors.white,
+                  onChanged: (val) {
+                    if (kgPerBox > 0) {
+                      final n = int.tryParse(val.trim()) ?? 0;
+                      setS(() => kgCtrl.text = (n * kgPerBox).toStringAsFixed(0));
+                    }
+                  },
+                  decoration: _editDeco('Ilość skrzyń', Icons.inventory_2),
+                ),
+                const SizedBox(height: 12),
+                _editField(kgCtrl, 'Waga netto (kg)', Icons.scale,
+                    const TextInputType.numberWithOptions(decimal: true)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Anuluj',
+                    style: TextStyle(color: Colors.white54)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4A90D9),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  final newLot   = lotCtrl.text.trim();
+                  final newIlosc = int.tryParse(iloscCtrl.text.trim()) ?? 0;
+                  final newKg    = double.tryParse(
+                          kgCtrl.text.trim().replaceAll(',', '.')) ?? 0.0;
+                  final update = <String, dynamic>{
+                    'lot':            newLot,
+                    'skrzynie_ilosc': newIlosc,
+                    'kg_szacunek':    newKg,
+                  };
+                  if (lotFound) {
+                    update['dostawca'] = dostawca;
+                    update['owoc']     = owoc;
+                    update['odmiana']  = odmiana;
                   }
+                  await FirebaseFirestore.instance
+                      .collection('skaner_wnioski')
+                      .doc(id)
+                      .update(update);
+                  if (ctx.mounted) Navigator.pop(ctx);
                 },
-                decoration: _editDeco('Ilość skrzyń', Icons.inventory_2),
+                child: const Text('Zapisz',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
               ),
-              const SizedBox(height: 12),
-              _editField(kgCtrl, 'Waga netto (kg)', Icons.scale,
-                  const TextInputType.numberWithOptions(decimal: true)),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Anuluj',
-                  style: TextStyle(color: Colors.white54)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4A90D9),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () async {
-                final newLot   = lotCtrl.text.trim();
-                final newIlosc = int.tryParse(iloscCtrl.text.trim()) ?? 0;
-                final newKg    = double.tryParse(
-                        kgCtrl.text.trim().replaceAll(',', '.')) ??
-                    0.0;
-                await FirebaseFirestore.instance
-                    .collection('skaner_wnioski')
-                    .doc(id)
-                    .update({
-                  'lot':            newLot,
-                  'skrzynie_ilosc': newIlosc,
-                  'kg_szacunek':    newKg,
-                });
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('Zapisz',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
 
+    closed = true;
+    lotTimer?.cancel();
     lotCtrl.dispose();
     iloscCtrl.dispose();
     kgCtrl.dispose();
@@ -1239,11 +1384,11 @@ class _WniosekTile extends StatelessWidget {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.65)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF4A90D9), width: 2),
+          borderSide: const BorderSide(color: Colors.white, width: 3),
         ),
       );
 
@@ -1253,6 +1398,7 @@ class _WniosekTile extends StatelessWidget {
       controller: ctrl,
       keyboardType: inputType,
       style: const TextStyle(color: Colors.white),
+      cursorColor: Colors.white,
       decoration: _editDeco(label, icon),
     );
   }

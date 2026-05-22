@@ -596,6 +596,7 @@ class _DostawcyTab extends StatelessWidget {
                               margin: const EdgeInsets.only(bottom: 6),
                               child: ListTile(
                                 dense: true,
+                                onTap: () => _showEditDialog(ctx, docs[i].id, kod, nazwa),
                                 leading: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
@@ -612,6 +613,10 @@ class _DostawcyTab extends StatelessWidget {
                                   ),
                                 ),
                                 title: Text(nazwa, style: const TextStyle(fontSize: 14)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.textSecondary),
+                                  onPressed: () => _showEditDialog(ctx, docs[i].id, kod, nazwa),
+                                ),
                               ),
                             ),
                           );
@@ -747,6 +752,82 @@ class _DostawcyTab extends StatelessWidget {
         SnackBar(content: Text('Dodano $written dostawców')),
       );
     }
+  }
+
+  void _showEditDialog(BuildContext context, String docId, String currentKod, String currentNazwa) {
+    final kodCtrl   = TextEditingController(text: currentKod);
+    final nazwaCtrl = TextEditingController(text: currentNazwa);
+    final formKey   = GlobalKey<FormState>();
+    final seedMatches = _suppliersToSeed.where((e) => e.$1 == currentKod);
+    final seedEntry   = seedMatches.isEmpty ? null : seedMatches.first;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: const Text('Edytuj dostawcę'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: kodCtrl,
+                  decoration: const InputDecoration(labelText: 'Kod'),
+                  keyboardType: TextInputType.number,
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Wymagany' : null,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: nazwaCtrl,
+                  decoration: const InputDecoration(labelText: 'Nazwa'),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Wymagana' : null,
+                ),
+                if (seedEntry != null) ...[
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => setS(() {
+                        kodCtrl.text   = seedEntry.$1;
+                        nazwaCtrl.text = seedEntry.$2;
+                      }),
+                      icon: const Icon(Icons.restore, size: 16),
+                      label: Text('Przywróć z listy: ${seedEntry.$2}',
+                          style: const TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryMid,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Anuluj'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                await FirebaseFirestore.instance
+                    .collection(AppConstants.colSuppliers)
+                    .doc(docId)
+                    .update({
+                  'kod':   kodCtrl.text.trim(),
+                  'nazwa': nazwaCtrl.text.trim(),
+                });
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Zapisz'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<bool?> _confirmDelete(BuildContext context) => showDialog<bool>(
