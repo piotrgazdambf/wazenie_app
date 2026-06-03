@@ -663,7 +663,7 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                   ],
                 ),
                 // Parametry
-                if (raport.brix != null || raport.witaminaC != null || raport.wytlokPct != null) ...[
+                if (raport.brix != null || raport.witaminaC != null || raport.uzyskPct != null) ...[
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
