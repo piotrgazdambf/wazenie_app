@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Kolekcje wewnętrzne aplikacji Ważenie ─────────────────────────────────
+    // Dostęp chroniony przez PIN-auth aplikacji (brak Firebase Auth).
+
+    match /deliveries/{doc} {
+      allow read, write: if true;
+    }
+    match /skaner_wnioski/{doc} {
+      allow read, write: if true;
+    }
+    match /skaner_zejscia/{doc} {
+      allow read, write: if true;
+    }
+    match /users/{doc} {
+      allow read, write: if true;
+    }
+    match /mcrQueue/{doc} {
+      allow read, write: if true;
+    }
+    match /pls/{doc} {
+      allow read, write: if true;
+    }
+    match /inventory/{doc} {
+      allow read, write: if true;
+    }
+    match /suppliers/{doc} {
+      allow read, write: if true;
+    }
+    match /crateActions/{doc} {
+      allow read, write: if true;
+    }
+    match /crateStates/{doc} {
+      allow read, write: if true;
+    }
+    match /kwDocs/{doc} {
+      allow read, write: if true;
+    }
+    match /appConfig/{doc} {
+      allow read, write: if true;
+    }
+
+    // ── Integracja z Raporty produkcyjne (mbf-raporty) ───────────────────────
+    // Mati pisze tu z secondary FirebaseApp wskazującego na ten projekt.
+    // Otwarte write: dopuszczalne dla narzędzia wewnętrznego B2B.
+    // TODO (Operon): domknąć Auth gdy wspólny projekt Firebase.
+
+    match /lot_raporty_wstepne/{doc} {
+      allow read, write: if true;
+    }
+
+    // ── Dane zwrotne z Ważenia do Raportów produkcyjnych ─────────────────────
+    // Mati czyta stąd filterując po raport_wstepny_id lub operon_preliminary_doc_id.
+
+    match /delivery_assignments/{doc} {
+      allow read, write: if true;
+    }
+  }
+}

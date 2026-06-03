@@ -179,21 +179,33 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
           });
         }
 
-        // 7. Zapisz przypisanie
+        // 7. Pobierz operon_preliminary_doc_id z dokumentu raportu wstępnego
+        String? operonPreliminaryDocId;
+        try {
+          final raportDoc = await db
+              .collection(AppConstants.colRaportyWstepne)
+              .doc(raportId)
+              .get();
+          operonPreliminaryDocId =
+              raportDoc.data()?['operon_preliminary_doc_id'] as String?;
+        } catch (_) {}
+
+        // 8. Zapisz przypisanie
         await db.collection(AppConstants.colDeliveryAssign).add(
           DeliveryAssignment(
-            wniosekId:      wniosekId,
-            lotDostawy:     lot,
-            raportWstepnyId: raportId,
-            lotProdukcji:   raport.lotProdukcji,
-            typProdukcji:   widget.typProdukcji,
-            kgZejscia:      kg,
-            dostawca:       d['dostawca'] as String? ?? '',
-            owoc:           d['owoc']     as String? ?? '',
-            odmiana:        d['odmiana']  as String? ?? '',
-            dyspozytorId:   widget.user.id,
-            dyspozytorName: widget.user.name,
-            zejscieId:      zejscieId,
+            wniosekId:             wniosekId,
+            lotDostawy:            lot,
+            raportWstepnyId:       raportId,
+            lotProdukcji:          raport.lotProdukcji,
+            typProdukcji:          widget.typProdukcji,
+            kgZejscia:             kg,
+            dostawca:              d['dostawca'] as String? ?? '',
+            owoc:                  d['owoc']     as String? ?? '',
+            odmiana:               d['odmiana']  as String? ?? '',
+            dyspozytorId:          widget.user.id,
+            dyspozytorName:        widget.user.name,
+            zejscieId:             zejscieId,
+            operonPreliminaryDocId: operonPreliminaryDocId,
           ).toMap(),
         );
 
@@ -661,8 +673,8 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                         _ParamChip('BRIX: ${raport.brix!.toStringAsFixed(1)}', color),
                       if (raport.witaminaC != null)
                         _ParamChip('Wit.C: ${raport.witaminaC!.toStringAsFixed(1)}', color),
-                      if (raport.wytlokPct != null)
-                        _ParamChip('Wytłok: ${raport.wytlokPct!.toStringAsFixed(1)}%', color),
+                      if (raport.uzyskPct != null)
+                        _ParamChip('Uzysk: ${raport.uzyskPct!.toStringAsFixed(1)}%', color),
                     ],
                   ),
                 ],

@@ -65,7 +65,7 @@ class RaportWstepny {
   final String owoc;
   final double? brix;
   final double? witaminaC;
-  final double? wytlokPct;
+  final double? uzyskPct;
   final String status; // otwarty | zamkniety
   final DateTime? dataProdukcji;
   final String sourceApp;
@@ -77,7 +77,7 @@ class RaportWstepny {
     required this.owoc,
     this.brix,
     this.witaminaC,
-    this.wytlokPct,
+    this.uzyskPct,
     this.status = 'otwarty',
     this.dataProdukcji,
     this.sourceApp = 'wazenie_seed',
@@ -92,7 +92,7 @@ class RaportWstepny {
       owoc:          d['owoc']           as String? ?? '',
       brix:          (d['brix']          as num?)?.toDouble(),
       witaminaC:     (d['witamina_c']    as num?)?.toDouble(),
-      wytlokPct:     (d['wytlok_pct']   as num?)?.toDouble(),
+      uzyskPct:      (d['uzysk_pct']     as num?)?.toDouble(),
       status:        d['status']         as String? ?? 'otwarty',
       dataProdukcji: (d['data_produkcji'] as Timestamp?)?.toDate(),
       sourceApp:     d['source_app']     as String? ?? '',
@@ -105,7 +105,7 @@ class RaportWstepny {
     'owoc':            owoc,
     if (brix      != null) 'brix':       brix,
     if (witaminaC != null) 'witamina_c': witaminaC,
-    if (wytlokPct != null) 'wytlok_pct': wytlokPct,
+    if (uzyskPct  != null) 'uzysk_pct':  uzyskPct,
     'status':          status,
     if (dataProdukcji != null)
       'data_produkcji': Timestamp.fromDate(dataProdukcji!),

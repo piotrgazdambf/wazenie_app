@@ -23,6 +23,7 @@ class DeliveryAssignment {
   final String dyspozytorId;
   final String dyspozytorName;
   final String? zejscieId;
+  final String? operonPreliminaryDocId; // ID dokumentu w Raporty produkcyjne (mbf-raporty)
   final String status; // przypisany | zatwierdzony
 
   const DeliveryAssignment({
@@ -39,6 +40,7 @@ class DeliveryAssignment {
     required this.dyspozytorId,
     required this.dyspozytorName,
     this.zejscieId,
+    this.operonPreliminaryDocId,
     this.status = 'przypisany',
   });
 
@@ -54,7 +56,8 @@ class DeliveryAssignment {
     'odmiana':           odmiana,
     'dyspozytor_id':     dyspozytorId,
     'dyspozytor_name':   dyspozytorName,
-    if (zejscieId != null) 'zejscie_id': zejscieId,
+    if (zejscieId              != null) 'zejscie_id':                zejscieId,
+    if (operonPreliminaryDocId != null) 'operon_preliminary_doc_id': operonPreliminaryDocId,
     'status':            status,
     'created_at':        FieldValue.serverTimestamp(),
     'source_app':        'wazenie',
