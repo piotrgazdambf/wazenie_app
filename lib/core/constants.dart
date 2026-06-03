@@ -14,8 +14,10 @@ class AppConstants {
   static const String colSuppliers   = 'suppliers';
   static const String colCrateActions = 'crateActions';
   static const String colCrateStates  = 'crateStates';
-  static const String colKwDocs      = 'kwDocs';
-  static const String colAppConfig   = 'appConfig';
+  static const String colKwDocs            = 'kwDocs';
+  static const String colAppConfig         = 'appConfig';
+  static const String colRaportyWstepne    = 'lot_raporty_wstepne';
+  static const String colDeliveryAssign    = 'delivery_assignments';
 
   // ── Firebase Remote Config klucze ───────────────────────────────────────────
   static const String rcMinVersion        = 'min_version';

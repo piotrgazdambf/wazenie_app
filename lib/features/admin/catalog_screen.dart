@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../app/theme.dart';
 import '../../core/constants.dart';
+import '../../core/models/raport_wstepny.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 const _suppliersToSeed = [
@@ -476,7 +478,7 @@ class CatalogScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return OfflineOverflowGuard(
       child: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppBar(
@@ -489,6 +491,7 @@ class CatalogScreen extends StatelessWidget {
               tabs: [
                 Tab(text: 'Dostawcy'),
                 Tab(text: 'Owoce'),
+                Tab(text: 'Raporty wstępne'),
               ],
             ),
           ),
@@ -500,6 +503,7 @@ class CatalogScreen extends StatelessWidget {
                   children: [
                     _DostawcyTab(),
                     _OwaceTab(),
+                    _RaportyWstepneTab(),
                   ],
                 ),
               ),
@@ -1005,4 +1009,195 @@ class _OwaceTab extends StatelessWidget {
           ],
         ),
       );
+}
+
+// ── Zakładka raportów wstępnych (mockowanie / podgląd) ────────────────────────
+//
+// INTEGRACJA: W docelowym flow Generator LOT tworzy dokumenty w kolekcji
+// "lot_raporty_wstepne". Poniższy seed służy wyłącznie do testów lokalnych.
+// Seed nie nadpisuje istniejących dokumentów (SetOptions merge:true).
+
+const _seedRaporty = [
+  {"id": "mock_sok_jablko_1",       "lot_produkcji": "P/0001/26-S", "typ_produkcji": "sok",               "owoc": "Jabłko",  "brix": 12.4, "witamina_c": 8.2,  "wytlok_pct": 22.0},
+  {"id": "mock_sok_gruszka_1",      "lot_produkcji": "P/0002/26-S", "typ_produkcji": "sok",               "owoc": "Gruszka", "brix": 13.1, "witamina_c": 6.5,  "wytlok_pct": 24.0},
+  {"id": "mock_sok_jablko_2",       "lot_produkcji": "P/0003/26-S", "typ_produkcji": "sok",               "owoc": "Jabłko",  "brix": 11.8, "witamina_c": 7.9,  "wytlok_pct": 21.5},
+  {"id": "mock_przecier_jablko_1",  "lot_produkcji": "P/0001/26-P", "typ_produkcji": "przecier_nadzienie","owoc": "Jabłko",  "brix": 14.2, "wytlok_pct": 35.0},
+  {"id": "mock_przecier_gruszka_1", "lot_produkcji": "P/0002/26-P", "typ_produkcji": "przecier_nadzienie","owoc": "Gruszka", "brix": 15.0, "wytlok_pct": 33.5},
+  {"id": "mock_obieranie_jablko_1", "lot_produkcji": "P/0001/26-O", "typ_produkcji": "obieranie",         "owoc": "Jabłko"},
+];
+
+class _RaportyWstepneTab extends StatefulWidget {
+  const _RaportyWstepneTab();
+  @override
+  State<_RaportyWstepneTab> createState() => _RaportyWstepneTabState();
+}
+
+class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
+  bool _seeding = false;
+
+  Future<void> _seed() async {
+    setState(() => _seeding = true);
+    final db = FirebaseFirestore.instance;
+    try {
+      for (final r in _seedRaporty) {
+        final id   = r["id"] as String;
+        final data = Map<String, dynamic>.from(r)..remove("id");
+        data["status"]     = "otwarty";
+        data["source_app"] = "wazenie_seed";
+        data["created_at"] = FieldValue.serverTimestamp();
+        await db.collection(AppConstants.colRaportyWstepne).doc(id).set(data, SetOptions(merge: true));
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Dodano 6 przykładowych kart"),
+          backgroundColor: Color(0xFF2D6A4F),
+        ));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Błąd: $e"), backgroundColor: Colors.redAccent));
+    } finally {
+      if (mounted) setState(() => _seeding = false);
+    }
+  }
+
+  Future<void> _delete(String docId) =>
+      FirebaseFirestore.instance.collection(AppConstants.colRaportyWstepne).doc(docId).delete();
+
+  Future<void> _toggleStatus(String docId, String current) =>
+      FirebaseFirestore.instance.collection(AppConstants.colRaportyWstepne).doc(docId)
+          .update({"status": current == "otwarty" ? "zamkniety" : "otwarty"});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: const Color(0xFF1A1A2E),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text("Karty raportów wstępnych",
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2D6A4F),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _seeding ? null : _seed,
+                icon: _seeding
+                    ? const SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.add_chart, size: 16),
+                label: const Text("Seed przykłady",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection(AppConstants.colRaportyWstepne)
+                .orderBy("created_at", descending: true)
+                .snapshots(),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs = snap.data?.docs ?? [];
+              if (docs.isEmpty) {
+                return const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.article_outlined, color: Colors.white24, size: 52),
+                      SizedBox(height: 12),
+                      Text("Brak kart raportów wstępnych",
+                          style: TextStyle(color: Colors.white54)),
+                      SizedBox(height: 8),
+                      Text("Kliknij Seed przykłady aby dodać dane testowe.",
+                          style: TextStyle(color: Colors.white30, fontSize: 12)),
+                    ],
+                  ),
+                );
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: docs.length,
+                itemBuilder: (_, i) {
+                  final doc    = docs[i] as DocumentSnapshot<Map<String, dynamic>>;
+                  final r      = RaportWstepny.fromFirestore(doc);
+                  final closed = r.status == "zamkniety";
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A2E),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: closed ? Colors.white12 : r.typProdukcji.color.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: r.typProdukcji.color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(r.typProdukcji.icon,
+                            color: closed ? Colors.white30 : r.typProdukcji.color, size: 18),
+                      ),
+                      title: Text(r.lotProdukcji,
+                          style: TextStyle(
+                              color: closed ? Colors.white38 : Colors.white,
+                              fontFamily: "monospace",
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13)),
+                      subtitle: Text(
+                        "${r.owoc}  ·  ${r.typProdukcji.label}"
+                        "${r.brix != null ? "  ·  BRIX ${r.brix!.toStringAsFixed(1)}" : ""}",
+                        style: TextStyle(
+                            color: closed ? Colors.white24 : Colors.white54, fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => _toggleStatus(doc.id, r.status),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: closed ? Colors.white12 : const Color(0xFF2D6A4F).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                closed ? "zamknięty" : "otwarty",
+                                style: TextStyle(
+                                    color: closed ? Colors.white30 : const Color(0xFF52B788),
+                                    fontSize: 10, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                            onPressed: () => _delete(doc.id),
+                            tooltip: "Usuń",
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

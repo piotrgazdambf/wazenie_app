@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
+import '../../core/models/raport_wstepny.dart';
+import 'przypisanie_screen.dart';
 import 'skaner_entry_screen.dart';
 
 // ── Provider: liczba oczekujących wniosków ────────────────────────────────────
@@ -1136,7 +1138,7 @@ class _WniosekTile extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.check, size: 16),
                     label: const Text('Akceptuj'),
-                    onPressed: () => _akceptuj(context, doc.id, user, d),
+                    onPressed: () => _wybierzTypProdukcji(context, doc.id, user),
                   ),
                 ),
               ],
@@ -1400,6 +1402,55 @@ class _WniosekTile extends StatelessWidget {
       style: const TextStyle(color: Colors.white),
       cursorColor: Colors.white,
       decoration: _editDeco(label, icon),
+    );
+  }
+
+  // Krok 1: wybór typu produkcji → otwiera PrzypisanieScreen
+  Future<void> _wybierzTypProdukcji(
+      BuildContext context, String wniosekId, AppUser user) async {
+    final typ = await showModalBottomSheet<TypProdukcji>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Wybierz typ produkcji',
+              style: TextStyle(
+                  color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Dostawę przypiszesz do odpowiedniej karty raportu wstępnego.',
+              style: TextStyle(color: kSkanerTextSec, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            ...TypProdukcji.values.map((typ) => _TypProdukcjiTile(
+                  typ: typ,
+                  onTap: () => Navigator.pop(_, typ),
+                )),
+          ],
+        ),
+      ),
+    );
+
+    if (typ == null || !context.mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrzypisanieScreen(
+          typProdukcji:     typ,
+          user:             user,
+          initialWniosekId: wniosekId,
+        ),
+      ),
     );
   }
 
@@ -1700,6 +1751,54 @@ class _Numpad extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+// ── Kafelek wyboru typu produkcji (bottom sheet) ──────────────────────────────
+
+class _TypProdukcjiTile extends StatelessWidget {
+  final TypProdukcji typ;
+  final VoidCallback onTap;
+  const _TypProdukcjiTile({required this.typ, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: typ.color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: typ.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(typ.icon, color: typ.color, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  typ.label,
+                  style: TextStyle(
+                      color: typ.color,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                Icon(Icons.chevron_right, color: typ.color.withValues(alpha: 0.5)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
