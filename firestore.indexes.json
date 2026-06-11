@@ -33,6 +33,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "created_at", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "lot_raporty_wstepne",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "typ_produkcji", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

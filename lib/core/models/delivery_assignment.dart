@@ -24,6 +24,8 @@ class DeliveryAssignment {
   final String dyspozytorName;
   final String? zejscieId;
   final String? operonPreliminaryDocId; // ID dokumentu w Raporty produkcyjne (mbf-raporty)
+  final String? dataDostawy;            // dd.MM.yyyy — data dostarczenia z karty ważenia
+  final String? twardosc;               // twardość owocu (opcjonalna)
   final String status; // przypisany | zatwierdzony
 
   const DeliveryAssignment({
@@ -41,25 +43,36 @@ class DeliveryAssignment {
     required this.dyspozytorName,
     this.zejscieId,
     this.operonPreliminaryDocId,
+    this.dataDostawy,
+    this.twardosc,
     this.status = 'przypisany',
   });
 
-  Map<String, dynamic> toMap() => {
-    'wniosek_id':        wniosekId,
-    'lot_dostawy':       lotDostawy,
-    'raport_wstepny_id': raportWstepnyId,
-    'lot_produkcji':     lotProdukcji,
-    'typ_produkcji':     typProdukcji.firestoreValue,
-    'kg_zejscia':        kgZejscia,
-    'dostawca':          dostawca,
-    'owoc':              owoc,
-    'odmiana':           odmiana,
-    'dyspozytor_id':     dyspozytorId,
-    'dyspozytor_name':   dyspozytorName,
-    if (zejscieId              != null) 'zejscie_id':                zejscieId,
-    if (operonPreliminaryDocId != null) 'operon_preliminary_doc_id': operonPreliminaryDocId,
-    'status':            status,
-    'created_at':        FieldValue.serverTimestamp(),
-    'source_app':        'wazenie',
-  };
+  Map<String, dynamic> toMap() {
+    // Fallback: jeśli brak daty dostarczenia z wniosku, użyj daty dzisiejszej
+    final now = DateTime.now();
+    final todayStr =
+        '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
+    final dateStr = (dataDostawy != null && dataDostawy!.isNotEmpty) ? dataDostawy! : todayStr;
+    return {
+      'wniosek_id':        wniosekId,
+      'lot_dostawy':       lotDostawy,
+      'raport_wstepny_id': raportWstepnyId,
+      'lot_produkcji':     lotProdukcji,
+      'typ_produkcji':     typProdukcji.firestoreValue,
+      'kg_zejscia':        kgZejscia,
+      'dostawca':          dostawca,
+      'owoc':              owoc,
+      'odmiana':           odmiana,
+      'data_karty_wazenia': dateStr,           // data dostarczenia z WSG (dd.MM.yyyy)
+      'dyspozytor_id':     dyspozytorId,
+      'dyspozytor_name':   dyspozytorName,
+      if (twardosc != null && twardosc!.isNotEmpty) 'twardosc': twardosc,
+      if (zejscieId              != null) 'zejscie_id':                zejscieId,
+      if (operonPreliminaryDocId != null) 'operon_preliminary_doc_id': operonPreliminaryDocId,
+      'status':            status,
+      'created_at':        FieldValue.serverTimestamp(),
+      'source_app':        'wazenie',
+    };
+  }
 }

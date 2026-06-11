@@ -491,7 +491,7 @@ class CatalogScreen extends StatelessWidget {
               tabs: [
                 Tab(text: 'Dostawcy'),
                 Tab(text: 'Owoce'),
-                Tab(text: 'Raporty wstÄ™pne'),
+                Tab(text: 'Raporty wstępne'),
               ],
             ),
           ),
@@ -539,7 +539,7 @@ class _DostawcyTab extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: () => _showAddDialog(context),
                       icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Dodaj dostawcÄ™'),
+                      label: const Text('Dodaj dostawcę'),
                       style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryMid),
                     ),
                   ),
@@ -1033,7 +1033,68 @@ class _RaportyWstepneTab extends StatefulWidget {
 }
 
 class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
-  bool _seeding = false;
+  bool _seeding  = false;
+  bool _cleaning = false;
+
+  // Usuwa stare dokumenty od raporty_produkcyjne z LOT < 153
+  Future<void> _cleanOldLots() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Wyczyść stare LOTy', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Usunie dokumenty source_app="raporty_produkcyjne" z LOT < 153.\nTej operacji nie można cofnąć.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(_, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(_, true),
+            child: const Text('Usuń'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _cleaning = true);
+    final db = FirebaseFirestore.instance;
+    int deleted = 0;
+    int skipped = 0;
+    try {
+      final snap = await db.collection(AppConstants.colRaportyWstepne).get();
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        if ((d['source_app'] as String?) != 'raporty_produkcyjne') { skipped++; continue; }
+        final lot = (d['lot_produkcji'] as String?) ?? '';
+        final prefix = _lotPrefix(lot);
+        if (prefix == null || prefix < 153) {
+          await doc.reference.delete();
+          deleted++;
+        } else {
+          skipped++;
+        }
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Usunięto $deleted dok. | Pozostawiono $skipped'),
+        backgroundColor: const Color(0xFF2D6A4F),
+      ));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent));
+    } finally {
+      if (mounted) setState(() => _cleaning = false);
+    }
+  }
+
+  static int? _lotPrefix(String lot) {
+    if (!lot.startsWith('LOT C:')) return null;
+    final num = lot.replaceFirst('LOT C:', '').trim();
+    final m = RegExp(r'^(\d{3})').firstMatch(num);
+    return m != null ? int.tryParse(m.group(1)!) : null;
+  }
 
   Future<void> _seed() async {
     setState(() => _seeding = true);
@@ -1049,13 +1110,13 @@ class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Dodano 6 przykĹ‚adowych kart"),
+          content: Text("Dodano 6 przykładowych kart"),
           backgroundColor: Color(0xFF2D6A4F),
         ));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("BĹ‚Ä…d: $e"), backgroundColor: Colors.redAccent));
+          SnackBar(content: Text("Błąd: $e"), backgroundColor: Colors.redAccent));
     } finally {
       if (mounted) setState(() => _seeding = false);
     }
@@ -1068,64 +1129,77 @@ class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
       FirebaseFirestore.instance.collection(AppConstants.colRaportyWstepne).doc(docId)
           .update({"status": current == "otwarty" ? "zamkniety" : "otwarty"});
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget _buildHeader() => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: const Color(0xFF1A1A2E),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text("Karty raportĂłw wstÄ™pnych",
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2D6A4F),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: _seeding ? null : _seed,
-                icon: _seeding
-                    ? const SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.add_chart, size: 16),
-                label: const Text("Seed przykĹ‚ady",
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-              ),
-            ],
+        ElevatedButton.icon(
+          onPressed: _cleaning ? null : _cleanOldLots,
+          icon: _cleaning
+              ? const SizedBox(width: 14, height: 14,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Icon(Icons.delete_sweep, size: 16),
+          label: const Text('Wyczyść stare LOTy'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.redAccent,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 40),
+            textStyle: const TextStyle(fontSize: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
-        Expanded(
-          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection(AppConstants.colRaportyWstepne)
-                .orderBy("created_at", descending: true)
-                .snapshots(),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final docs = snap.data?.docs ?? [];
-              if (docs.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.article_outlined, color: Colors.white24, size: 52),
-                      SizedBox(height: 12),
-                      Text("Brak kart raportĂłw wstÄ™pnych",
-                          style: TextStyle(color: Colors.white54)),
-                      SizedBox(height: 8),
-                      Text("Kliknij Seed przykĹ‚ady aby dodaÄ‡ dane testowe.",
-                          style: TextStyle(color: Colors.white30, fontSize: 12)),
-                    ],
-                  ),
-                );
-              }
-              return ListView.builder(
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
+          onPressed: _seeding ? null : _seed,
+          icon: _seeding
+              ? const SizedBox(width: 14, height: 14,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Icon(Icons.add_chart, size: 16),
+          label: const Text('Seed przykłady'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2D6A4F),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 40),
+            textStyle: const TextStyle(fontSize: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection(AppConstants.colRaportyWstepne)
+          .orderBy("created_at", descending: true)
+          .snapshots(),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        Widget body;
+        if (snap.connectionState == ConnectionState.waiting) {
+          body = const Center(child: CircularProgressIndicator());
+        } else if (docs.isEmpty) {
+          body = const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.article_outlined, color: Colors.white24, size: 52),
+                SizedBox(height: 12),
+                Text("Brak kart raportów wstępnych",
+                    style: TextStyle(color: Colors.white54)),
+                SizedBox(height: 8),
+                Text("Kliknij 'Seed przykłady' aby dodać dane testowe.",
+                    style: TextStyle(color: Colors.white30, fontSize: 12)),
+              ],
+            ),
+          );
+        } else {
+          body = ListView.builder(
                 padding: const EdgeInsets.all(12),
                 itemCount: docs.length,
                 itemBuilder: (_, i) {
@@ -1158,8 +1232,8 @@ class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
                               fontWeight: FontWeight.w700,
                               fontSize: 13)),
                       subtitle: Text(
-                        "${r.owoc}  Â·  ${r.typProdukcji.label}"
-                        "${r.brix != null ? "  Â·  BRIX ${r.brix!.toStringAsFixed(1)}" : ""}",
+                        "${r.owoc}  ·  ${r.typProdukcji.label}"
+                        "${r.brix != null ? "  ·  BRIX ${r.brix!.toStringAsFixed(1)}" : ""}",
                         style: TextStyle(
                             color: closed ? Colors.white24 : Colors.white54, fontSize: 11),
                       ),
@@ -1175,7 +1249,7 @@ class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                closed ? "zamkniÄ™ty" : "otwarty",
+                                closed ? "zamknięty" : "otwarty",
                                 style: TextStyle(
                                     color: closed ? Colors.white30 : const Color(0xFF52B788),
                                     fontSize: 10, fontWeight: FontWeight.w700),
@@ -1186,7 +1260,7 @@ class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                             onPressed: () => _delete(doc.id),
-                            tooltip: "UsuĹ„",
+                            tooltip: "Usuń",
                           ),
                         ],
                       ),
@@ -1194,10 +1268,14 @@ class _RaportyWstepneTabState extends State<_RaportyWstepneTab> {
                   );
                 },
               );
-            },
-          ),
-        ),
-      ],
+        }
+        return Column(
+          children: [
+            _buildHeader(),
+            Expanded(child: body),
+          ],
+        );
+      },
     );
   }
 }

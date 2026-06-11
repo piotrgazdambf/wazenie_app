@@ -8,16 +8,10 @@ import '../../core/models/delivery_assignment.dart';
 import '../../core/models/raport_wstepny.dart';
 import 'skaner_entry_screen.dart';
 
-// ── Ekran przypisywania dostaw do kart raportów wstępnych ─────────────────────
-//
-// Otwierany po wyborze typu produkcji w dyspozytorze.
-// Split-screen: lewo = karty raportów wstępnych, prawo = oczekujące wnioski.
-// Mechanizm: drag & drop LUB checkbox + przycisk "Przypisz zaznaczone".
-
 class PrzypisanieScreen extends StatefulWidget {
   final TypProdukcji typProdukcji;
   final AppUser user;
-  final String? initialWniosekId; // pre-zaznaczony po kliknięciu "Akceptuj"
+  final String? initialWniosekId;
 
   const PrzypisanieScreen({
     super.key,
@@ -31,47 +25,20 @@ class PrzypisanieScreen extends StatefulWidget {
 }
 
 class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
-  // wniosekId -> raportId (aktualne przypisania, jeszcze niezatwierdzone)
+  // wniosekId -> raportId
   final Map<String, String> _assignments = {};
 
-  // Zaznaczone checkboxami (dla alternatywy do DnD)
-  final Set<String> _checked = {};
-
-  // Cache docs ze streamów (potrzebne w _wykonajPrzeslij)
+  // Cache dla logiki Prześlij
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _wnioskiDocs = [];
   List<RaportWstepny> _raporty = [];
 
   bool _sending = false;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.initialWniosekId != null) {
-      _checked.add(widget.initialWniosekId!);
-    }
-  }
+  void _assign(String wniosekId, String raportId) =>
+      setState(() => _assignments[wniosekId] = raportId);
 
-  // ── Logika przypisania ────────────────────────────────────────────────────
-
-  void _assign(String wniosekId, String raportId) {
-    setState(() => _assignments[wniosekId] = raportId);
-  }
-
-  void _unassign(String wniosekId) {
-    setState(() => _assignments.remove(wniosekId));
-  }
-
-  void _assignCheckedTo(String raportId) {
-    if (_checked.isEmpty) return;
-    setState(() {
-      for (final id in _checked) {
-        _assignments[id] = raportId;
-      }
-      _checked.clear();
-    });
-  }
-
-  // ── Wykonaj zejście i zapisz przypisanie ──────────────────────────────────
+  void _unassign(String wniosekId) =>
+      setState(() => _assignments.remove(wniosekId));
 
   Future<void> _wykonajPrzeslij() async {
     if (_assignments.isEmpty) return;
@@ -99,7 +66,17 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
       if (raport == null) continue;
 
       try {
-        // 1. Pobierz dokument dostawy
+        // Sprawdź duplikat — wniosek już mógł być wcześniej przesłany
+        final existing = await db
+            .collection(AppConstants.colDeliveryAssign)
+            .where('wniosek_id', isEqualTo: wniosekId)
+            .limit(1)
+            .get();
+        if (existing.docs.isNotEmpty) {
+          errors.add('$lot: już przesłany wcześniej (pominięto)');
+          continue;
+        }
+
         double  limit      = 0.0;
         String? delivDocId;
 
@@ -112,21 +89,36 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
             delivDoc = q.docs.first as DocumentSnapshot<Map<String, dynamic>>;
           }
         }
+        String dataDostarczenia = '';
+        String twardoscVal = '';
         if (delivDoc.exists && delivDoc.data() != null) {
           delivDocId = delivDoc.id;
           final raw  = (delivDoc.data()!['waga_netto'] ?? '').toString()
               .replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '');
           limit = double.tryParse(raw) ?? 0.0;
+
+          // Twardość (opcjonalna)
+          twardoscVal = (delivDoc.data()!['twardosc'] ?? '').toString().trim();
+
+          // Data dostarczenia z karty ważenia (format yyyy-MM-dd → dd.MM.yyyy)
+          final rawDate = (delivDoc.data()!['data'] ?? '').toString().trim();
+          if (rawDate.isNotEmpty) {
+            final parts = rawDate.split('-');
+            if (parts.length == 3) {
+              dataDostarczenia = '${parts[2]}.${parts[1]}.${parts[0]}';
+            } else {
+              // Już w formacie dd.MM.yyyy lub innym — zostawiamy bez zmian
+              dataDostarczenia = rawDate;
+            }
+          }
         }
 
-        // 2. Suma już pobranych kg
         double pobrano = 0.0;
         final zejsSnap = await db.collection('skaner_zejscia')
             .where('lot', isEqualTo: lot).get();
         pobrano = zejsSnap.docs.fold(
             0.0, (s, x) => s + ((x.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
 
-        // 3. Walidacja limitu
         if (limit > 0 && kg > 0 && kg > (limit - pobrano) + 0.1) {
           errors.add('$lot: za dużo (pozostało ~${fmt.format((limit - pobrano).clamp(0, double.infinity))} kg)');
           continue;
@@ -134,7 +126,6 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
 
         final wagaPo = pobrano + kg;
 
-        // 4. Zapisz zejście
         String? zejscieId;
         if (kg > 0) {
           final zejRef = await db.collection('skaner_zejscia').add({
@@ -156,13 +147,11 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
           });
           zejscieId = zejRef.id;
 
-          // 5. Zaktualizuj pobrano_kg w deliveries (zejście ze stanów)
           if (delivDocId != null) {
             await db.collection(AppConstants.colDeliveries)
                 .doc(delivDocId).update({'pobrano_kg': FieldValue.increment(kg)});
           }
 
-          // 6. MCR queue
           final now   = DateTime.now();
           final mcrId = 'mcr_skaner_${now.millisecondsSinceEpoch}';
           await db.collection(AppConstants.colMcrQueue).doc(mcrId).set({
@@ -179,7 +168,6 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
           });
         }
 
-        // 7. Pobierz operon_preliminary_doc_id z dokumentu raportu wstępnego
         String? operonPreliminaryDocId;
         try {
           final raportDoc = await db
@@ -190,26 +178,26 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
               raportDoc.data()?['operon_preliminary_doc_id'] as String?;
         } catch (_) {}
 
-        // 8. Zapisz przypisanie
         await db.collection(AppConstants.colDeliveryAssign).add(
           DeliveryAssignment(
-            wniosekId:             wniosekId,
-            lotDostawy:            lot,
-            raportWstepnyId:       raportId,
-            lotProdukcji:          raport.lotProdukcji,
-            typProdukcji:          widget.typProdukcji,
-            kgZejscia:             kg,
-            dostawca:              d['dostawca'] as String? ?? '',
-            owoc:                  d['owoc']     as String? ?? '',
-            odmiana:               d['odmiana']  as String? ?? '',
-            dyspozytorId:          widget.user.id,
-            dyspozytorName:        widget.user.name,
-            zejscieId:             zejscieId,
+            wniosekId:              wniosekId,
+            lotDostawy:             lot,
+            raportWstepnyId:        raportId,
+            lotProdukcji:           raport.lotProdukcji,
+            typProdukcji:           widget.typProdukcji,
+            kgZejscia:              kg,
+            dostawca:               d['dostawca']    as String? ?? '',
+            owoc:                   d['owoc']         as String? ?? '',
+            odmiana:                d['odmiana']      as String? ?? '',
+            dataDostawy:            dataDostarczenia,
+            twardosc:               twardoscVal.isNotEmpty ? twardoscVal : null,
+            dyspozytorId:           widget.user.id,
+            dyspozytorName:         widget.user.name,
+            zejscieId:              zejscieId,
             operonPreliminaryDocId: operonPreliminaryDocId,
           ).toMap(),
         );
 
-        // 8. Zaktualizuj status wniosku
         await db.collection('skaner_wnioski').doc(wniosekId).update({
           'status':            'zaakceptowany',
           'dyspozytor_id':     widget.user.id,
@@ -270,8 +258,6 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final typ = widget.typProdukcji;
@@ -282,6 +268,7 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
         backgroundColor: kSkanerCard,
         foregroundColor: Colors.white,
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Przypisanie dostaw',
                 style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
@@ -289,198 +276,260 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
             _TypChip(typ: typ),
           ],
         ),
-        actions: [
-          if (_assignments.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: kSkanerAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: kSkanerAccent.withValues(alpha: 0.4)),
-                  ),
-                  child: Text(
-                    'Przypisano: ${_assignments.length}',
-                    style: const TextStyle(
-                        color: kSkanerAccent, fontSize: 12, fontWeight: FontWeight.w700),
+        actions: const [],
+      ),
+      body: Container(
+        color: kSkanerBg,
+        child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: _LeftPanel(
+                    typProdukcji:    widget.typProdukcji,
+                    assignments:     _assignments,
+                    onRaportyLoaded: (list) => setState(() => _raporty = list),
+                    onUnassign:      _unassign,
+                    onDrop:          _assign,
+                    wnioskiDocs:     _wnioskiDocs,
+                    raporty:         _raporty,
                   ),
                 ),
-              ),
+                Container(width: 1, color: kSkanerPrimary.withValues(alpha: 0.4)),
+                Expanded(
+                  flex: 4,
+                  child: _RightPanel(
+                    assignments:      _assignments,
+                    initialWniosekId: widget.initialWniosekId,
+                    raporty:          _raporty,
+                    onDocsLoaded:     (docs) => setState(() => _wnioskiDocs = docs),
+                    onUnassign:       _unassign,
+                    onDrop:           _assign,
+                  ),
+                ),
+              ],
             ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _assignments.isEmpty ? kSkanerPrimary : kSkanerAccent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+          // ── Pasek Prześlij ─────────────────────────────────────────────
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: _assignments.isEmpty ? 0 : 64,
+            color: kSkanerCard,
+            child: _assignments.isEmpty ? const SizedBox.shrink() : Container(
+              decoration: BoxDecoration(
+                color: kSkanerCard,
+                border: Border(top: BorderSide(color: kSkanerAccent.withValues(alpha: 0.4))),
               ),
-              onPressed: (_assignments.isEmpty || _sending) ? null : _wykonajPrzeslij,
-              icon: _sending
-                  ? const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.send, size: 16),
-              label: const Text('Prześlij', style: TextStyle(fontWeight: FontWeight.w700)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline, color: kSkanerAccent, size: 18),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Przypisano ${_assignments.length} ${_assignments.length == 1 ? "dostawę" : "dostawy"} — gotowe do wysłania',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const Spacer(),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kSkanerAccent,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(160, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _sending ? null : _wykonajPrzeslij,
+                    icon: _sending
+                        ? const SizedBox(width: 18, height: 18,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Icon(Icons.send, size: 18),
+                    label: Text(
+                      _sending ? 'Wysyłanie...' : 'Prześlij (${_assignments.length})',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
-      ),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── LEWA: karty raportów wstępnych ────────────────────────────
-          Expanded(
-            flex: 5,
-            child: _LeftPanel(
-              typProdukcji:   widget.typProdukcji,
-              assignments:    _assignments,
-              checked:        _checked,
-              onRaportyLoaded: (list) => setState(() => _raporty = list),
-              onAssignChecked: _assignCheckedTo,
-              onUnassign:     (wniosekId) => _unassign(wniosekId),
-              onDrop:         (wniosekId, raportId) => _assign(wniosekId, raportId),
-              wnioskiDocs:    _wnioskiDocs,
-              raporty:        _raporty,
-            ),
-          ),
-          // Separator
-          Container(
-            width: 1,
-            color: kSkanerPrimary.withValues(alpha: 0.4),
-          ),
-          // ── PRAWA: oczekujące wnioski ─────────────────────────────────
-          Expanded(
-            flex: 4,
-            child: _RightPanel(
-              assignments:      _assignments,
-              checked:          _checked,
-              initialWniosekId: widget.initialWniosekId,
-              raporty:          _raporty,
-              onDocsLoaded:     (docs) => setState(() => _wnioskiDocs = docs),
-              onToggleCheck: (id) => setState(() {
-                if (_checked.contains(id)) {
-                  _checked.remove(id);
-                } else {
-                  _checked.add(id);
-                }
-              }),
-              onUnassign: _unassign,
-            ),
-          ),
-        ],
-      ),
+        ), // Column
+      ), // Container
     );
   }
 }
 
-// ── Lewa strona: pula kart raportów wstępnych ─────────────────────────────────
+// ── Lewa strona ───────────────────────────────────────────────────────────────
 
-class _LeftPanel extends StatelessWidget {
+class _LeftPanel extends StatefulWidget {
   final TypProdukcji typProdukcji;
   final Map<String, String> assignments;
-  final Set<String> checked;
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> wnioskiDocs;
   final List<RaportWstepny> raporty;
   final void Function(List<RaportWstepny>) onRaportyLoaded;
-  final void Function(String raportId) onAssignChecked;
   final void Function(String wniosekId) onUnassign;
   final void Function(String wniosekId, String raportId) onDrop;
 
   const _LeftPanel({
     required this.typProdukcji,
     required this.assignments,
-    required this.checked,
     required this.wnioskiDocs,
     required this.raporty,
     required this.onRaportyLoaded,
-    required this.onAssignChecked,
     required this.onUnassign,
     required this.onDrop,
   });
 
   @override
+  State<_LeftPanel> createState() => _LeftPanelState();
+}
+
+class _LeftPanelState extends State<_LeftPanel> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _stream;
+  String _lastIds = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = FirebaseFirestore.instance
+        .collection(AppConstants.colRaportyWstepne)
+        .where('typ_produkcji', isEqualTo: widget.typProdukcji.firestoreValue)
+        .where('status', isEqualTo: 'otwarty')
+        .snapshots();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
+    return Container(
+      color: kSkanerBg,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _PanelHeader(
-          icon: typProdukcji.icon,
+          icon: widget.typProdukcji.icon,
           label: 'Karty raportów wstępnych',
-          subtitle: typProdukcji.label,
-          color: typProdukcji.color,
+          subtitle: widget.typProdukcji.label,
+          color: widget.typProdukcji.color,
         ),
         Expanded(
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection(AppConstants.colRaportyWstepne)
-                .where('typ_produkcji', isEqualTo: typProdukcji.firestoreValue)
-                .where('status', isEqualTo: 'otwarty')
-                .snapshots(),
+            stream: _stream,
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
-                    child: CircularProgressIndicator(color: kSkanerAccent));
+                return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
+              }
+              if (snap.hasError) {
+                return _errorWidget('Stream: ${snap.error}');
               }
 
-              final docs = snap.data?.docs ?? [];
+              try {
+              final allDocs = snap.data?.docs ?? [];
+              // Filtr: tylko LOTy od 153+ (format "LOT C: 153XXCYYY...")
+              // Seed-owe karty (format "3 / 20.12.2024") też przepuszczamy
+              final docs = allDocs.where((d) {
+                final lot = ((d.data() as Map<String, dynamic>)['lot_produkcji'] as String?) ?? '';
+                if (!lot.startsWith('LOT C:')) return true; // seed lub inny format
+                final numPart = lot.replaceFirst('LOT C:', '').trim();
+                final match = RegExp(r'^(\d{3})').firstMatch(numPart);
+                if (match == null) return true;
+                final prefix = int.tryParse(match.group(1)!) ?? 0;
+                return prefix >= 153;
+              }).toList();
               final items = docs
                   .map((d) => RaportWstepny.fromFirestore(
                       d as DocumentSnapshot<Map<String, dynamic>>))
                   .toList();
 
-              // Aktualizuj cache w rodzicu (jeden raz po zmianie)
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                onRaportyLoaded(items);
-              });
+              final newIds = items.map((r) => r.id).join(',');
+              if (newIds != _lastIds) {
+                _lastIds = newIds;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  widget.onRaportyLoaded(items);
+                });
+              }
 
               if (items.isEmpty) {
-                return _EmptyRaportyPlaceholder(typ: typProdukcji);
+                return _EmptyRaportyPlaceholder(typ: widget.typProdukcji);
               }
 
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
                 itemCount: items.length,
                 itemBuilder: (_, i) => _RaportKartaCard(
-                  raport:       items[i],
-                  assignments:  assignments,
-                  checked:      checked,
-                  wnioskiDocs:  wnioskiDocs,
-                  onDrop:       onDrop,
-                  onAssignChecked: onAssignChecked,
-                  onUnassign:   onUnassign,
+                  raport:      items[i],
+                  assignments: widget.assignments,
+                  wnioskiDocs: widget.wnioskiDocs,
+                  onDrop:      widget.onDrop,
+                  onUnassign:  widget.onUnassign,
                 ),
               );
+              } catch (e) {
+                return _errorWidget('Parser: $e');
+              }
             },
           ),
         ),
       ],
-    );
+      ), // Column
+    ); // Container
   }
+
+  static Widget _errorWidget(String msg) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 40),
+          const SizedBox(height: 12),
+          const Text('Błąd ładowania kart',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(msg, textAlign: TextAlign.center,
+              style: const TextStyle(color: kSkanerTextSec, fontSize: 11)),
+        ],
+      ),
+    ),
+  );
 }
 
-// ── Prawa strona: oczekujące wnioski ──────────────────────────────────────────
+// ── Prawa strona ──────────────────────────────────────────────────────────────
 
-class _RightPanel extends StatelessWidget {
+class _RightPanel extends StatefulWidget {
   final Map<String, String> assignments;
-  final Set<String> checked;
   final String? initialWniosekId;
   final List<RaportWstepny> raporty;
   final void Function(List<QueryDocumentSnapshot<Map<String, dynamic>>>) onDocsLoaded;
-  final void Function(String wniosekId) onToggleCheck;
   final void Function(String wniosekId) onUnassign;
+  final void Function(String wniosekId, String raportId) onDrop;
 
   const _RightPanel({
     required this.assignments,
-    required this.checked,
     required this.initialWniosekId,
     required this.raporty,
     required this.onDocsLoaded,
-    required this.onToggleCheck,
     required this.onUnassign,
+    required this.onDrop,
   });
+
+  @override
+  State<_RightPanel> createState() => _RightPanelState();
+}
+
+class _RightPanelState extends State<_RightPanel> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _stream;
+  String _lastDocIds = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = FirebaseFirestore.instance
+        .collection('skaner_wnioski')
+        .where('status', isEqualTo: 'oczekujacy')
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -490,35 +539,46 @@ class _RightPanel extends StatelessWidget {
         const _PanelHeader(
           icon: Icons.hourglass_top,
           label: 'Oczekujące dostawy',
-          subtitle: 'Przeciągnij lub zaznacz i przypisz',
+          subtitle: 'Przeciągnij dostawę na kartę raportu',
           color: kSkanerAccent,
         ),
         Expanded(
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('skaner_wnioski')
-                .where('status', isEqualTo: 'oczekujacy')
-                .snapshots(),
+            stream: _stream,
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
-                    child: CircularProgressIndicator(color: kSkanerAccent));
+                return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
               }
 
               final docs = (snap.data?.docs
-                  .cast<QueryDocumentSnapshot<Map<String, dynamic>>>() ?? []);
+                  .cast<QueryDocumentSnapshot<Map<String, dynamic>>>() ?? [])
+                ..sort((a, b) {
+                  final da = a.data();
+                  final db = b.data();
+                  final dostawcaA = (da['dostawca'] as String? ?? '').toLowerCase();
+                  final dostawcaB = (db['dostawca'] as String? ?? '').toLowerCase();
+                  final cmp = dostawcaA.compareTo(dostawcaB);
+                  if (cmp != 0) return cmp;
+                  // Ten sam dostawca → sortuj po odmianie
+                  final odmA = (da['odmiana'] as String? ?? '').toLowerCase();
+                  final odmB = (db['odmiana'] as String? ?? '').toLowerCase();
+                  return odmA.compareTo(odmB);
+                });
 
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                onDocsLoaded(docs);
-              });
+              final newIds = docs.map((d) => d.id).join(',');
+              if (newIds != _lastDocIds) {
+                _lastDocIds = newIds;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  widget.onDocsLoaded(docs);
+                });
+              }
 
               if (docs.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle_outline,
-                          color: kSkanerAccent, size: 48),
+                      const Icon(Icons.check_circle_outline, color: kSkanerAccent, size: 48),
                       const SizedBox(height: 12),
                       const Text('Brak oczekujących dostaw',
                           style: TextStyle(color: kSkanerTextSec, fontSize: 15)),
@@ -534,12 +594,10 @@ class _RightPanel extends StatelessWidget {
                   final doc = docs[i];
                   return _WniosekDragTile(
                     doc:        doc,
-                    isChecked:  checked.contains(doc.id),
-                    assignment: assignments[doc.id],
-                    raporty:    raporty,
-                    onToggle:   () => onToggleCheck(doc.id),
-                    onUnassign: () => onUnassign(doc.id),
-                    isInitial:  doc.id == initialWniosekId,
+                    assignment: widget.assignments[doc.id],
+                    raporty:    widget.raporty,
+                    onUnassign: () => widget.onUnassign(doc.id),
+                    isInitial:  doc.id == widget.initialWniosekId,
                   );
                 },
               );
@@ -556,19 +614,15 @@ class _RightPanel extends StatelessWidget {
 class _RaportKartaCard extends StatefulWidget {
   final RaportWstepny raport;
   final Map<String, String> assignments;
-  final Set<String> checked;
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> wnioskiDocs;
   final void Function(String wniosekId, String raportId) onDrop;
-  final void Function(String raportId) onAssignChecked;
   final void Function(String wniosekId) onUnassign;
 
   const _RaportKartaCard({
     required this.raport,
     required this.assignments,
-    required this.checked,
     required this.wnioskiDocs,
     required this.onDrop,
-    required this.onAssignChecked,
     required this.onUnassign,
   });
 
@@ -586,12 +640,11 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
 
   @override
   Widget build(BuildContext context) {
-    final raport = widget.raport;
-    final fmt    = NumberFormat('#,##0', 'pl_PL');
-    final color  = raport.typProdukcji.color;
+    final raport   = widget.raport;
+    final fmt      = NumberFormat('#,##0', 'pl_PL');
+    final color    = raport.typProdukcji.color;
     final assigned = _assignedWniosekIds;
 
-    // Suma kg przypisanych wniosków
     double sumKg = 0;
     for (final wid in assigned) {
       final doc = widget.wnioskiDocs.cast<QueryDocumentSnapshot<Map<String, dynamic>>?>()
@@ -622,7 +675,9 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                 : kSkanerCard,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isDragOver ? color : (assigned.isNotEmpty ? color.withValues(alpha: 0.5) : kSkanerPrimary),
+              color: isDragOver
+                  ? color
+                  : (assigned.isNotEmpty ? color.withValues(alpha: 0.5) : kSkanerPrimary),
               width: isDragOver ? 2 : 1.5,
             ),
           ),
@@ -631,7 +686,6 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Nagłówek karty
                 Row(
                   children: [
                     Container(
@@ -655,39 +709,33 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                       child: Text(
                         raport.owoc,
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600),
+                            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
                 ),
-                // Parametry
-                if (raport.brix != null || raport.witaminaC != null || raport.uzyskPct != null) ...[
+                if (raport.smak != null || raport.pojemnoscLabel != null || raport.brix != null || raport.witaminaC != null || raport.uzyskPct != null) ...[
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     children: [
-                      if (raport.brix != null)
-                        _ParamChip('BRIX: ${raport.brix!.toStringAsFixed(1)}', color),
-                      if (raport.witaminaC != null)
-                        _ParamChip('Wit.C: ${raport.witaminaC!.toStringAsFixed(1)}', color),
-                      if (raport.uzyskPct != null)
-                        _ParamChip('Uzysk: ${raport.uzyskPct!.toStringAsFixed(1)}%', color),
+                      if (raport.smak          != null) _ParamChip(raport.smak!, color),
+                      if (raport.pojemnoscLabel != null) _ParamChip(raport.pojemnoscLabel!, color),
+                      if (raport.brix          != null) _ParamChip('BRIX: ${raport.brix!.toStringAsFixed(1)}', color),
+                      if (raport.witaminaC     != null) _ParamChip('Wit.C: ${raport.witaminaC!.toStringAsFixed(1)}', color),
                     ],
                   ),
                 ],
-                // Strefa upuszczania
                 const SizedBox(height: 10),
                 if (assigned.isEmpty)
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     decoration: BoxDecoration(
                       color: isDragOver
                           ? color.withValues(alpha: 0.08)
-                          : kSkanerPrimary.withValues(alpha: 0.15),
+                          : kSkanerPrimary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: isDragOver ? color : kSkanerPrimary,
@@ -701,9 +749,9 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                           color: isDragOver ? color : kSkanerTextSec,
                           size: 22,
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
-                          isDragOver ? 'Upuść tutaj' : 'Przeciągnij dostawę lub użyj przycisku poniżej',
+                          isDragOver ? 'Upuść tutaj' : 'Przeciągnij dostawę tutaj',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: isDragOver ? color : kSkanerTextSec,
@@ -714,7 +762,6 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                     ),
                   )
                 else ...[
-                  // Lista przypisanych wniosków
                   ...assigned.map((wid) {
                     final doc = widget.wnioskiDocs.cast<QueryDocumentSnapshot<Map<String, dynamic>>?>()
                         .firstWhere((d) => d?.id == wid, orElse: () => null);
@@ -741,11 +788,13 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                           ),
                           if (kg > 0)
                             Text('~${fmt.format(kg)} kg',
-                                style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 6),
+                                style: TextStyle(
+                                    color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+                          const SizedBox(width: 8),
                           InkWell(
                             onTap: () => widget.onUnassign(wid),
-                            child: const Icon(Icons.close, size: 14, color: Colors.redAccent),
+                            borderRadius: BorderRadius.circular(4),
+                            child: const Icon(Icons.close, size: 15, color: Colors.redAccent),
                           ),
                         ],
                       ),
@@ -755,30 +804,8 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
                     const SizedBox(height: 4),
                     Text('Łącznie: ~${fmt.format(sumKg)} kg',
                         style: TextStyle(
-                            color: color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
+                            color: color, fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
-                ],
-                // Przycisk "Przypisz zaznaczone"
-                if (widget.checked.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: color,
-                        side: BorderSide(color: color),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                      icon: const Icon(Icons.arrow_back, size: 14),
-                      label: Text(
-                        'Przypisz zaznaczone (${widget.checked.length})',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                      onPressed: () => widget.onAssignChecked(raport.id),
-                    ),
-                  ),
                 ],
               ],
             ),
@@ -793,19 +820,15 @@ class _RaportKartaCardState extends State<_RaportKartaCard> {
 
 class _WniosekDragTile extends StatelessWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
-  final bool isChecked;
   final String? assignment; // raportId jeśli przypisany
   final List<RaportWstepny> raporty;
-  final VoidCallback onToggle;
   final VoidCallback onUnassign;
   final bool isInitial;
 
   const _WniosekDragTile({
     required this.doc,
-    required this.isChecked,
     required this.assignment,
     required this.raporty,
-    required this.onToggle,
     required this.onUnassign,
     this.isInitial = false,
   });
@@ -839,8 +862,8 @@ class _WniosekDragTile extends StatelessWidget {
         border: Border.all(
           color: assigned
               ? (raport?.typProdukcji.color ?? kSkanerAccent).withValues(alpha: 0.4)
-              : (isChecked ? kSkanerAccent : kSkanerPrimary),
-          width: (assigned || isChecked || isInitial) ? 1.5 : 1,
+              : (isInitial ? kSkanerAccent : kSkanerPrimary),
+          width: (assigned || isInitial) ? 1.5 : 1,
         ),
       ),
       child: Padding(
@@ -848,19 +871,10 @@ class _WniosekDragTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Checkbox
-            Checkbox(
-              value: isChecked,
-              onChanged: (_) => onToggle(),
-              activeColor: kSkanerAccent,
-              side: const BorderSide(color: kSkanerTextSec),
-            ),
-            const SizedBox(width: 4),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Owoc + LOT
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -868,9 +882,7 @@ class _WniosekDragTile extends StatelessWidget {
                         child: Text(
                           '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
                           style: const TextStyle(
-                              color: kSkanerAccent,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700),
+                              color: kSkanerAccent, fontSize: 13, fontWeight: FontWeight.w700),
                         ),
                       ),
                       Container(
@@ -881,14 +893,11 @@ class _WniosekDragTile extends StatelessWidget {
                         ),
                         child: Text(lot,
                             style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                                fontFamily: 'monospace')),
+                                color: Colors.white70, fontSize: 11, fontFamily: 'monospace')),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Dostawca + czas
                   Row(
                     children: [
                       Text(dostawca,
@@ -900,14 +909,12 @@ class _WniosekDragTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  // Skrzynie + kg
                   Row(
                     children: [
                       _SmallChip('$ilosc skrz.', kSkanerPrimary),
                       const SizedBox(width: 6),
                       if (kg > 0) _SmallChip('~${fmt.format(kg)} kg', const Color(0xFF2D6A4F)),
                       const Spacer(),
-                      // Badge przypisania
                       if (assigned && raport != null)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -943,11 +950,11 @@ class _WniosekDragTile extends StatelessWidget {
                 ],
               ),
             ),
-            // Uchwyt do przeciągania
             if (!assigned)
               Padding(
-                padding: const EdgeInsets.only(left: 4, top: 4),
-                child: Icon(Icons.drag_indicator, color: kSkanerTextSec.withValues(alpha: 0.5), size: 18),
+                padding: const EdgeInsets.only(left: 8, top: 2),
+                child: Icon(Icons.drag_indicator,
+                    color: kSkanerTextSec.withValues(alpha: 0.6), size: 20),
               ),
           ],
         ),
@@ -1007,8 +1014,7 @@ class _PanelHeader extends StatelessWidget {
               Text(label,
                   style: const TextStyle(
                       color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-              Text(subtitle,
-                  style: TextStyle(color: color, fontSize: 11)),
+              Text(subtitle, style: TextStyle(color: color, fontSize: 11)),
             ],
           ),
         ],
@@ -1058,8 +1064,7 @@ class _ParamChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
-      child: Text(label,
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -1078,8 +1083,7 @@ class _SmallChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Text(label,
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -1105,7 +1109,7 @@ class _EmptyRaportyPlaceholder extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Dodaj karty przez panel admina\n(przycisk "Seed raporty wstępne")\nlub poczekaj aż Generator LOT je utworzy.',
+              'Dodaj karty przez panel admina\nlub poczekaj aż Generator LOT je utworzy.',
               textAlign: TextAlign.center,
               style: TextStyle(color: kSkanerTextSec, fontSize: 13),
             ),
