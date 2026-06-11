@@ -143,18 +143,28 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
 
       final delivInfo = _DeliveryInfo.fromFirestore(doc.data()!);
 
-      // Pobierz sumę już zdjętych kg dla tego LOT
+      // Pobierz realne zejścia (skaner_zejscia)
       final zejsciaSnap = await FirebaseFirestore.instance
           .collection('skaner_zejscia')
           .where('lot', isEqualTo: delivInfo.lot)
           .get();
-      final pobrano = zejsciaSnap.docs.fold<double>(
+      final pobranoRealne = zejsciaSnap.docs.fold<double>(
           0.0,
           (s, d) => s + ((d.data()['waga_zejscia'] as num?)?.toDouble() ?? 0.0));
 
+      // Dodaj oczekujące i zaakceptowane wnioski (jeszcze nie zrealizowane zejście)
+      final wnioskiSnap = await FirebaseFirestore.instance
+          .collection('skaner_wnioski')
+          .where('lot', isEqualTo: delivInfo.lot)
+          .where('status', whereIn: ['oczekujacy', 'zaakceptowany'])
+          .get();
+      final pobranoWnioski = wnioskiSnap.docs.fold<double>(
+          0.0,
+          (s, d) => s + ((d.data()['kg_szacunek'] as num?)?.toDouble() ?? 0.0));
+
       setState(() {
         _delivery = delivInfo;
-        _pobrano  = pobrano;
+        _pobrano  = pobranoRealne + pobranoWnioski;
         _loading  = false;
       });
       // Przenieś fokus na pole ilości
@@ -274,20 +284,93 @@ class _WozkowyScreenState extends State<WozkowyScreen> {
       });
 
       if (mounted) {
+        final fmt2        = NumberFormat('#,##0', 'pl_PL');
+        final szacPobraniu = _pobrano + kgSzacunek;
+        final szacPozostalo = (delivery.wagaNetto - szacPobraniu).clamp(0.0, double.infinity);
+        final totalSkrz   = delivery.totalSkrzynie;
+        final skrzPobranych = totalSkrz > 0 && delivery.wagaNetto > 0
+            ? (szacPobraniu * totalSkrz / delivery.wagaNetto).round().clamp(0, totalSkrz)
+            : 0;
+        final skrzPozostalo = (totalSkrz - skrzPobranych).clamp(0, totalSkrz);
+
         await showDialog<void>(
           context: context,
           builder: (_) => AlertDialog(
             backgroundColor: kSkanerCard,
-            title: const Text('Wysłano', style: TextStyle(color: Colors.white)),
-            content: Text(
-              'Zlecenie na $ilosc skrz. z dostawy ${delivery.lot} zostało wysłane do dyspozytora.',
-              style: const TextStyle(color: kSkanerTextSec),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: const [
+                Icon(Icons.check_circle, color: kSkanerAccent, size: 22),
+                SizedBox(width: 8),
+                Text('Wysłano!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Zlecenie na $ilosc skrz. z ${delivery.lot}\nwysłane do dyspozytora.',
+                  style: const TextStyle(color: kSkanerTextSec, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: kSkanerPrimary.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: kSkanerAccent.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'STAN PO TYM WNIOSKU',
+                        style: TextStyle(
+                          color: kSkanerTextSec,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _StanRow(
+                        label: 'To zlecenie:',
+                        value: '$ilosc skrz.  ·  ~${fmt2.format(kgSzacunek)} kg',
+                        color: kSkanerAccent,
+                      ),
+                      const SizedBox(height: 4),
+                      _StanRow(
+                        label: 'Pobrano łącznie:',
+                        value: '~${fmt2.format(szacPobraniu)} kg'
+                            '${totalSkrz > 0 ? "  ·  ~$skrzPobranych skrz." : ""}',
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 4),
+                      _StanRow(
+                        label: 'Zostało na stanie:',
+                        value: '~${fmt2.format(szacPozostalo)} kg'
+                            '${totalSkrz > 0 ? "  ·  ~$skrzPozostalo skrz." : ""}',
+                        color: szacPozostalo < 100 ? Colors.redAccent : kSkanerAccent,
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             actions: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: kSkanerAccent),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK', style: TextStyle(color: Colors.white)),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kSkanerAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
               ),
             ],
           ),
@@ -680,6 +763,49 @@ class _KgEstimateFieldState extends State<_KgEstimateField> {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+// ── Helper widget ─────────────────────────────────────────────────────────────
+
+// ── Wiersz stanu w dialogu potwierdzenia ─────────────────────────────────────
+
+class _StanRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final bool bold;
+  const _StanRow({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 110,
+          child: Text(
+            label,
+            style: const TextStyle(color: kSkanerTextSec, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ),
       ],
     );
   }

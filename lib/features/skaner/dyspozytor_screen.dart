@@ -21,6 +21,64 @@ final skanerOczekujaceCountProvider = StreamProvider<int>((ref) {
       .map((snap) => snap.docs.length);
 });
 
+// ── Auto-dopasowanie wniosków offline ze skanera ──────────────────────────────
+// Skaner wysłany bez internetu zna tylko LOT i liczbę skrzyń
+// (offline_bez_danych: true). Dyspozytor uzupełnia dostawcę, owoc
+// i kg_szacunek z kolekcji deliveries, gdy tylko wniosek dotrze.
+
+final Set<String> _enrichInFlight = {};
+
+Future<void> _uzupelnijOfflineWniosek(
+    DocumentSnapshot<Map<String, dynamic>> doc) async {
+  if (_enrichInFlight.contains(doc.id)) return;
+  _enrichInFlight.add(doc.id);
+  try {
+    final d   = doc.data();
+    if (d == null) return;
+    final lot = d['lot'] as String? ?? '';
+    if (lot.isEmpty) return;
+
+    final db    = FirebaseFirestore.instance;
+    final docId = lot.replaceAll('/', '_');
+    var delivDoc =
+        await db.collection(AppConstants.colDeliveries).doc(docId).get();
+    if (!delivDoc.exists) {
+      final q = await db.collection(AppConstants.colDeliveries)
+          .where('lot', isEqualTo: lot).limit(1).get();
+      if (q.docs.isNotEmpty) {
+        delivDoc = q.docs.first as DocumentSnapshot<Map<String, dynamic>>;
+      }
+    }
+    // Dostawa wciąż nieznana — zostawiamy flagę, dyspozytor poprawi ręcznie.
+    if (!delivDoc.exists) return;
+
+    final data  = delivDoc.data()!;
+    final rawKg = (data['waga_netto'] ?? '').toString()
+        .replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), '');
+    final wagaNetto = double.tryParse(rawKg) ?? 0.0;
+    final total = ((data['skrzynie_drew'] as int?) ?? 0) +
+        ((data['skrzynie_plast'] as int?) ?? 0);
+    final ilosc = d['skrzynie_ilosc'] as int? ?? 0;
+    final kg    = (total > 0 && wagaNetto > 0)
+        ? ilosc * wagaNetto / total
+        : 0.0;
+
+    await db.collection('skaner_wnioski').doc(doc.id).update({
+      'owoc':               data['owoc']     ?? '',
+      'odmiana':            data['odmiana']  ?? '',
+      'dostawca':           data['dostawca'] ?? '',
+      'data_dostawy':       data['data']     ?? '',
+      'kg_szacunek':        kg,
+      'offline_bez_danych': false,
+      'offline_dopasowano': true,
+    });
+  } catch (_) {
+    // Brak sieci/uprawnień — spróbujemy przy kolejnym odświeżeniu streamu.
+  } finally {
+    _enrichInFlight.remove(doc.id);
+  }
+}
+
 // ── Ekran Dyspozytora ─────────────────────────────────────────────────────────
 
 class DyspozytoScreen extends ConsumerStatefulWidget {
@@ -245,11 +303,6 @@ class _DyspozytooPanelState extends State<_DyspozytoPanel> {
             expanded: _oczekujaceExpanded,
             onToggle: () => setState(() => _oczekujaceExpanded = !_oczekujaceExpanded),
           ),
-          const SizedBox(height: 20),
-          // ── Sekcja skanowania / zejście ────────────────────────────────────
-          _SkanujSectionHeader(),
-          const SizedBox(height: 10),
-          _ZejscieScanner(user: widget.user),
         ],
       ),
     );
@@ -278,6 +331,15 @@ class _OczekujaceAccordion extends StatelessWidget {
           .snapshots(),
       builder: (context, snap) {
         final rawDocs = List.of(snap.data?.docs ?? []);
+
+        // Wnioski offline ze skanera (sam LOT + ilość) — dopasuj dane dostawy
+        for (final doc in rawDocs) {
+          final d2 = doc.data() as Map<String, dynamic>;
+          if (d2['offline_bez_danych'] == true) {
+            _uzupelnijOfflineWniosek(
+                doc as DocumentSnapshot<Map<String, dynamic>>);
+          }
+        }
 
         // Posortuj wstępnie po czasie (rosnąco) — FIFO w ramach dostawcy
         rawDocs.sort((a, b) {
@@ -1023,6 +1085,11 @@ class _WniosekTile extends StatelessWidget {
     final ilosc    = d['skrzynie_ilosc'] as int? ?? 0;
     final kg       = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
     final ts       = (d['created_at'] as Timestamp?)?.toDate();
+    final offline  = d['offline_bez_danych'] == true;
+    final przeznStr = (d['przeznaczenie'] as String?) ?? '';
+    final przezn    = przeznStr.isNotEmpty
+        ? TypProdukcji.fromString(przeznStr)
+        : null;
     final fmt      = NumberFormat('#,##0', 'pl_PL');
     final timeFmt  = DateFormat('dd.MM.yyyy  HH:mm');
 
@@ -1038,15 +1105,47 @@ class _WniosekTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Plakietka: wniosek offline w trakcie dopasowywania
+            if (offline)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: Colors.orangeAccent.withValues(alpha: 0.5)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.wifi_off,
+                        color: Colors.orangeAccent, size: 13),
+                    SizedBox(width: 5),
+                    Text(
+                      'OFFLINE — dopasowuję dostawę...',
+                      style: TextStyle(
+                          color: Colors.orangeAccent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
             // Wiersz 1: owoc/odmiana po lewej, LOT + dostawca po prawej
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Text(
-                    '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
-                    style: const TextStyle(
-                        color: kSkanerAccent,
+                    owoc.isEmpty && offline
+                        ? '(dopasowywanie...)'
+                        : '$owoc${odmiana.isNotEmpty ? " · $odmiana" : ""}',
+                    style: TextStyle(
+                        color: owoc.isEmpty && offline
+                            ? Colors.orangeAccent
+                            : kSkanerAccent,
                         fontSize: 15,
                         fontWeight: FontWeight.w700),
                   ),
@@ -1102,6 +1201,34 @@ class _WniosekTile extends StatelessWidget {
                 if (kg > 0) _Chip('~${fmt.format(kg)} kg', const Color(0xFF2D6A4F)),
               ],
             ),
+            // Przeznaczenie wybrane przez wózkowego na skanerze
+            if (przezn != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: przezn.color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: przezn.color.withValues(alpha: 0.6)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(przezn.icon, color: przezn.color, size: 15),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Przeznaczenie: ${przezn.label}',
+                      style: TextStyle(
+                          color: przezn.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -1138,7 +1265,18 @@ class _WniosekTile extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.check, size: 16),
                     label: const Text('Akceptuj'),
-                    onPressed: () => _wybierzTypProdukcji(context, doc.id, user),
+                    // Wniosek offline bez dopasowanej dostawy — najpierw
+                    // auto-dopasowanie (lub ręczna edycja), potem akceptacja.
+                    onPressed: offline
+                        ? () => ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Wniosek offline — czekam na dopasowanie dostawy. '
+                                    'Jeśli LOT jest błędny, użyj „Edytuj".'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            )
+                        : () => _wybierzTypProdukcji(context, doc.id, user, d),
                   ),
                 ),
               ],
@@ -1162,6 +1300,11 @@ class _WniosekTile extends StatelessWidget {
     String dostawca = d['dostawca'] as String? ?? '';
     String owoc     = d['owoc']     as String? ?? '';
     String odmiana  = d['odmiana']  as String? ?? '';
+    // Przeznaczenie ze skanera — dyspozytor może je tu zmienić (wentyl bezpieczeństwa)
+    final przeznStr = (d['przeznaczenie'] as String?) ?? '';
+    TypProdukcji przezn = przeznStr.isNotEmpty
+        ? TypProdukcji.fromString(przeznStr)
+        : TypProdukcji.sok;
     bool   lotFound = true;
     bool   fetching = false;
     bool   closed   = false;
@@ -1322,6 +1465,62 @@ class _WniosekTile extends StatelessWidget {
                 const SizedBox(height: 12),
                 _editField(kgCtrl, 'Waga netto (kg)', Icons.scale,
                     const TextInputType.numberWithOptions(decimal: true)),
+                const SizedBox(height: 16),
+                // Zmień przeznaczenie (domyślnie to, co przyszło ze skanera)
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Przeznaczenie',
+                      style: TextStyle(
+                          color: kSkanerTextSec,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: TypProdukcji.values.map((t) {
+                    final sel = t == przezn;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: GestureDetector(
+                          onTap: () => setS(() => przezn = t),
+                          child: Container(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: sel
+                                  ? t.color.withValues(alpha: 0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: sel
+                                      ? t.color
+                                      : Colors.white24,
+                                  width: sel ? 2 : 1),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(t.icon,
+                                    color: sel ? t.color : Colors.white54,
+                                    size: 20),
+                                const SizedBox(height: 4),
+                                Text(
+                                  t.label,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color:
+                                          sel ? t.color : Colors.white54,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
               ],
             ),
             actions: [
@@ -1346,6 +1545,10 @@ class _WniosekTile extends StatelessWidget {
                     'lot':            newLot,
                     'skrzynie_ilosc': newIlosc,
                     'kg_szacunek':    newKg,
+                    // Przeznaczenie (zmienione ręcznie lub bez zmian ze skanera)
+                    'przeznaczenie':  przezn.firestoreValue,
+                    // Ręczna edycja kończy tryb offline wniosku
+                    'offline_bez_danych': false,
                   };
                   if (lotFound) {
                     update['dostawca'] = dostawca;
@@ -1407,46 +1610,57 @@ class _WniosekTile extends StatelessWidget {
 
   // Krok 1: wybór typu produkcji → otwiera PrzypisanieScreen
   Future<void> _wybierzTypProdukcji(
-      BuildContext context, String wniosekId, AppUser user) async {
-    final typ = await showModalBottomSheet<TypProdukcji>(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Wybierz typ produkcji',
-              style: TextStyle(
-                  color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Dostawę przypiszesz do odpowiedniej karty raportu wstępnego.',
-              style: TextStyle(color: kSkanerTextSec, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            ...TypProdukcji.values.map((typ) => _TypProdukcjiTile(
-                  typ: typ,
-                  onTap: () => Navigator.pop(_, typ),
-                )),
-          ],
+      BuildContext context, String wniosekId, AppUser user,
+      [Map<String, dynamic>? d]) async {
+    // Domyślnie używamy przeznaczenia wybranego przez wózkowego na skanerze.
+    // Picker pokazujemy tylko, gdy wniosek go nie ma (starsze wnioski).
+    final fromSkaner = (d?['przeznaczenie'] as String?) ?? '';
+    TypProdukcji? typ;
+
+    if (fromSkaner.isNotEmpty) {
+      typ = TypProdukcji.fromString(fromSkaner);
+    } else {
+      typ = await showModalBottomSheet<TypProdukcji>(
+        context: context,
+        backgroundColor: const Color(0xFF1A1A2E),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-      ),
-    );
+        builder: (_) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Wybierz typ produkcji',
+                style: TextStyle(
+                    color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Dostawę przypiszesz do odpowiedniej karty raportu wstępnego.',
+                style: TextStyle(color: kSkanerTextSec, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              ...TypProdukcji.values.map((typ) => _TypProdukcjiTile(
+                    typ: typ,
+                    onTap: () => Navigator.pop(_, typ),
+                  )),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (typ == null || !context.mounted) return;
+    final TypProdukcji wybrany = typ;
 
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PrzypisanieScreen(
-          typProdukcji:     typ,
+          typProdukcji:     wybrany,
           user:             user,
           initialWniosekId: wniosekId,
         ),
