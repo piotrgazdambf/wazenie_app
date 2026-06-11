@@ -141,6 +141,9 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
             'skrzynie_ilosc':  d['skrzynie_ilosc'] ?? 0,
             // przeznaczenie ze skanera (sok|przecier_nadzienie|obieranie)
             'przeznaczenie':   d['przeznaczenie'] ?? '',
+            // kto ściągał (operator skanera)
+            'wozkowy_id':      d['wozkowy_id'],
+            'wozkowy_name':    d['wozkowy_name'],
             'dyspozytor_id':   widget.user.id,
             'dyspozytor_name': widget.user.name,
             'wniosek_id':      wniosekId,

@@ -1088,6 +1088,7 @@ class _WniosekTile extends StatelessWidget {
     final kg       = (d['kg_szacunek'] as num?)?.toDouble() ?? 0.0;
     final ts       = (d['created_at'] as Timestamp?)?.toDate();
     final offline  = d['offline_bez_danych'] == true;
+    final wozkowy  = (d['wozkowy_name'] as String?) ?? '';
     final przeznStr = (d['przeznaczenie'] as String?) ?? '';
     final przezn    = przeznStr.isNotEmpty
         ? TypProdukcji.fromString(przeznStr)
@@ -1203,6 +1204,22 @@ class _WniosekTile extends StatelessWidget {
                 if (kg > 0) _Chip('~${fmt.format(kg)} kg', const Color(0xFF2D6A4F)),
               ],
             ),
+            // Kto ściągał (operator skanera)
+            if (wozkowy.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.person_outline,
+                      color: kSkanerTextSec, size: 14),
+                  const SizedBox(width: 5),
+                  Text('Ściągnął: $wozkowy',
+                      style: const TextStyle(
+                          color: kSkanerTextSec,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ],
             // Przeznaczenie wybrane przez wózkowego na skanerze
             if (przezn != null) ...[
               const SizedBox(height: 8),
@@ -1800,6 +1817,9 @@ class _WniosekTile extends StatelessWidget {
           'skrzynie_ilosc':  d['skrzynie_ilosc'] ?? 0,
           // przeznaczenie ze skanera (sok|przecier_nadzienie|obieranie)
           'przeznaczenie':   d['przeznaczenie'] ?? '',
+          // kto ściągał (operator skanera)
+          'wozkowy_id':      d['wozkowy_id'],
+          'wozkowy_name':    d['wozkowy_name'],
           'dyspozytor_id':   user.id,
           'dyspozytor_name': user.name,
           'wniosek_id':      id,
