@@ -35,6 +35,9 @@ service cloud.firestore {
     match /crateStates/{doc} {
       allow read, write: if true;
     }
+    match /crate_loans/{doc} {
+      allow read, write: if true;
+    }
     match /kwDocs/{doc} {
       allow read, write: if true;
     }

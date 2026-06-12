@@ -8,6 +8,7 @@ import '../../core/constants.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/crate_icon.dart';
+import 'mbf_loans_tab.dart';
 
 // ── Model CrateState ─────────────────────────────────────────────────────────
 
@@ -140,7 +141,7 @@ class SkrzynieScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return OfflineOverflowGuard(
       child: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppBar(
@@ -156,12 +157,14 @@ class SkrzynieScreen extends ConsumerWidget {
               ),
             ],
             bottom: const TabBar(
+              isScrollable: true,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white70,
               indicatorColor: Colors.white,
               tabs: [
                 Tab(text: 'Stany skrzyń'),
                 Tab(text: 'Akcje skrzyń'),
+                Tab(text: 'Wypożyczenia MBF'),
               ]),
           ),
           body: Column(children: [
@@ -169,6 +172,7 @@ class SkrzynieScreen extends ConsumerWidget {
             const Expanded(child: TabBarView(children: [
               _StanyTab(),
               _AkcjeTab(),
+              MbfLoansTab(),
             ])),
           ]),
         ),

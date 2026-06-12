@@ -14,6 +14,7 @@ class AppConstants {
   static const String colSuppliers   = 'suppliers';
   static const String colCrateActions = 'crateActions';
   static const String colCrateStates  = 'crateStates';
+  static const String colCrateLoans   = 'crate_loans'; // wypożyczenia skrzyń MBF dostawcom (saldo)
   static const String colKwDocs            = 'kwDocs';
   static const String colAppConfig         = 'appConfig';
   static const String colRaportyWstepne    = 'lot_raporty_wstepne';
