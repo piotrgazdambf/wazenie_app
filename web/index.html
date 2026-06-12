@@ -37,6 +37,24 @@
     };
     firebase.initializeApp(firebaseConfig);
   </script>
+
+  <!--
+    Auto-aktualizacja: gdy nowa wersja aplikacji (service worker) przejmie kontrolę,
+    przeładuj stronę raz. Dzięki temu po wgraniu nowej wersji nie trzeba ręcznie
+    czyścić cache. Bezpieczne: tylko nasłuch zdarzenia, przeładowuje wyłącznie gdy
+    strona była już kontrolowana przez starszą wersję (realna aktualizacja, nie pierwsze wejście).
+  -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      var _hadController = !!navigator.serviceWorker.controller;
+      var _refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (_refreshing || !_hadController) return;
+        _refreshing = true;
+        window.location.reload();
+      });
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
