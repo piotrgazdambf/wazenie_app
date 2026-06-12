@@ -267,11 +267,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     // Walidacja skrzyń (pomijana gdy inne owoce + znam wagę netto)
     final _drewIl  = _pi(_drewIlCtrl.text);
     final _plastIl = _pi(_plastIlCtrl.text);
+    // Skrzynie MB liczą się tak samo — dostawa może być w samych skrzyniach MB
+    final _mbDrewIl  = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
+    final _mbPlastIl = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
     if (_isJablkoGruszka || !_znaNetto) {
-      if (_drewIl == 0 && _plastIl == 0) {
+      if (_drewIl == 0 && _plastIl == 0 && _mbDrewIl == 0 && _mbPlastIl == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Podaj ilość skrzyń (drewniane lub plastikowe)'),
+            content: Text('Podaj ilość skrzyń (drewniane, plastikowe lub MB)'),
             backgroundColor: AppTheme.errorRed,
           ),
         );
@@ -290,6 +293,24 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Podaj wagę skrzyni plastikowej [kg]'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        return;
+      }
+      if (_mbDrewIl > 0 && _p(_mbDrewWgCtrl.text) == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Podaj wagę skrzyni MB drewnianej [kg]'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        return;
+      }
+      if (_mbPlastIl > 0 && _p(_mbPlastWgCtrl.text) == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Podaj wagę skrzyni MB plastikowej [kg]'),
             backgroundColor: AppTheme.errorRed,
           ),
         );
