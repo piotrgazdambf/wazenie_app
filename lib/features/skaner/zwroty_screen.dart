@@ -84,6 +84,9 @@ class _PrzeslaneTab extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           itemCount: docs.length,
           itemBuilder: (_, i) => _AssignmentCard(
+            // Klucz per dokument — bez niego stan karty (spinner _busy)
+            // przykleja się do następnej pozycji gdy wiersz znika z listy.
+            key: ValueKey(docs[i].id),
             doc: docs[i],
             akcja: 'cofnij',
             userName: userName,
@@ -124,6 +127,7 @@ class _ZwroconeTab extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           itemCount: docs.length,
           itemBuilder: (_, i) => _AssignmentCard(
+            key: ValueKey(docs[i].id),
             doc: docs[i],
             akcja: 'przywroc',
             userName: '',
@@ -143,6 +147,7 @@ class _AssignmentCard extends StatefulWidget {
   final String userName;
   final String userId;
   const _AssignmentCard({
+    super.key,
     required this.doc, required this.akcja,
     required this.userName, required this.userId,
   });
