@@ -221,18 +221,29 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       netto  = brutto - taraDrew - taraPlast - taraMb;
     }
 
+    // Baza tary zwykłych skrzyń — po niej rozdzielamy netto między odmiany.
+    final regularnaTara = tDrew * wDrew + tPlast * wPlast;
     for (final o in _odm) {
-      o.wagaNetto = KwCalculations.wagaNettoOdmiany(
-        wagaNettoTotal: netto,
-        skrzDrew:  _pi(o.drewCtrl.text),
-        skrzPlast: _pi(o.plastCtrl.text),
-        totalDrew:  tDrew,
-        totalPlast: tPlast,
-        wagaJednejDrew:  wDrew,
-        wagaJednejPlast: wPlast,
-        zwrotPct:  _p(o.zwrotCtrl.text),
-        odpadPct:  _p(o.odpadCtrl.text),
-      );
+      if (regularnaTara > 0) {
+        o.wagaNetto = KwCalculations.wagaNettoOdmiany(
+          wagaNettoTotal: netto,
+          skrzDrew:  _pi(o.drewCtrl.text),
+          skrzPlast: _pi(o.plastCtrl.text),
+          totalDrew:  tDrew,
+          totalPlast: tPlast,
+          wagaJednejDrew:  wDrew,
+          wagaJednejPlast: wPlast,
+          zwrotPct:  _p(o.zwrotCtrl.text),
+          odpadPct:  _p(o.odpadCtrl.text),
+        );
+      } else {
+        // Brak zwykłych skrzyń (np. dostawa w samych skrzyniach MB) — nie ma
+        // bazy tary do podziału. Dzielimy netto równo między odmiany.
+        final udzial = _odm.isEmpty ? netto : netto / _odm.length;
+        o.wagaNetto = udzial
+            * (1 - _p(o.zwrotCtrl.text) / 100)
+            * (1 - _p(o.odpadCtrl.text) / 100);
+      }
     }
 
     setState(() {
