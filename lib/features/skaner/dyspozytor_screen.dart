@@ -288,6 +288,11 @@ class _DyspozytooPanelState extends State<_DyspozytoPanel> {
         ),
         actions: [
           TextButton.icon(
+            onPressed: () => context.go('/skaner/zwroty'),
+            icon: const Icon(Icons.undo, color: kSkanerTextSec, size: 18),
+            label: const Text('Zwroty', style: TextStyle(color: kSkanerTextSec, fontSize: 12)),
+          ),
+          TextButton.icon(
             onPressed: widget.onLogout,
             icon: const Icon(Icons.logout, color: kSkanerTextSec, size: 18),
             label: const Text('Wyloguj', style: TextStyle(color: kSkanerTextSec, fontSize: 12)),

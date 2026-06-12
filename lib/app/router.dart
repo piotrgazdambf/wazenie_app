@@ -22,6 +22,7 @@ import '../features/karty/karty_screen.dart';
 import '../features/rozliczone/rozliczone_screen.dart';
 import '../features/skaner/dyspozytor_screen.dart';
 import '../features/skaner/skaner_entry_screen.dart';
+import '../features/skaner/zwroty_screen.dart';
 import '../features/skaner/wozkowy_screen.dart';
 import '../features/wsg/wsg_screen.dart';
 
@@ -123,6 +124,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/skaner', builder: (_, __) => const SkanerEntryScreen()),
       GoRoute(path: '/skaner/wozkowy', builder: (_, __) => const WozkowyScreen()),
       GoRoute(path: '/skaner/dyspozytor', builder: (_, __) => const DyspozytoScreen()),
+      GoRoute(path: '/skaner/zwroty', builder: (_, __) => const ZwrotyScreen()),
     ],
     errorBuilder: (_, state) => Scaffold(
       body: Center(child: Text('Błąd: ${state.error}')),

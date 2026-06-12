@@ -66,13 +66,18 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
       if (raport == null) continue;
 
       try {
-        // Sprawdź duplikat — wniosek już mógł być wcześniej przesłany
+        // Sprawdź duplikat — wniosek już mógł być wcześniej przesłany.
+        // Cofnięte przypisania (status != przypisany/zatwierdzony) NIE blokują
+        // ponownego przypisania — zejście zostało odwrócone.
         final existing = await db
             .collection(AppConstants.colDeliveryAssign)
             .where('wniosek_id', isEqualTo: wniosekId)
-            .limit(1)
             .get();
-        if (existing.docs.isNotEmpty) {
+        final aktywne = existing.docs.where((doc) {
+          final st = doc.data()['status'] as String? ?? '';
+          return st == 'przypisany' || st == 'zatwierdzony';
+        });
+        if (aktywne.isNotEmpty) {
           errors.add('$lot: już przesłany wcześniej (pominięto)');
           continue;
         }
