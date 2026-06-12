@@ -33,8 +33,10 @@ class _OdmGCtrl {
   final plastCtrl     = TextEditingController();
   final mbDrewCtrl     = TextEditingController();
   final mbPlastCtrl    = TextEditingController();
+  final mbMetalCtrl    = TextEditingController();
   final mbDrewWagaCtrl = TextEditingController(text: '60');
   final mbPlastWagaCtrl= TextEditingController(text: '10');
+  final mbMetalWagaCtrl= TextEditingController(text: '65');
   final zwrotCtrl     = TextEditingController(text: '0');
   final brixCtrl      = TextEditingController();
   final odpadCtrl     = TextEditingController();
@@ -54,7 +56,8 @@ class _OdmGCtrl {
 
   void dispose() {
     for (final c in [nazwaCtrl, wagaNettoCtrl, drewCtrl, plastCtrl,
-                     mbDrewCtrl, mbPlastCtrl, mbDrewWagaCtrl, mbPlastWagaCtrl,
+                     mbDrewCtrl, mbPlastCtrl, mbMetalCtrl,
+                     mbDrewWagaCtrl, mbPlastWagaCtrl, mbMetalWagaCtrl,
                      zwrotCtrl, brixCtrl, odpadCtrl, twardCtrl, infoCtrl,
                      nrCtrl, drewWagaCtrl, plastWagaCtrl]) {
       c.dispose();
@@ -228,6 +231,8 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         wagiGrupyData = [];
       }
       final mbDrewCnt     = int.tryParse(o.mbDrewCtrl.text.trim()) ?? 0;
+      final mbPlastCnt    = int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0;
+      final mbMetalCnt    = int.tryParse(o.mbMetalCtrl.text.trim()) ?? 0;
 
       final delRef = db.collection(AppConstants.colDeliveries).doc(docId);
       batch.set(delRef, {
@@ -265,9 +270,13 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
           'mb_drew_il':   mbDrewCnt,
           'mb_drew_waga': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,
         },
-        if ((int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0) > 0) ...{
-          'mb_plast_il':   int.tryParse(o.mbPlastCtrl.text.trim()) ?? 0,
+        if (mbPlastCnt > 0) ...{
+          'mb_plast_il':   mbPlastCnt,
           'mb_plast_waga': double.tryParse(o.mbPlastWagaCtrl.text.replaceAll(',', '.').trim()) ?? 10.0,
+        },
+        if (mbMetalCnt > 0) ...{
+          'mb_metal_il':   mbMetalCnt,
+          'mb_metal_waga': double.tryParse(o.mbMetalWagaCtrl.text.replaceAll(',', '.').trim()) ?? 65.0,
         },
         if (drewWagaJedn != null) ...{'drew_waga_jedn': drewWagaJedn, 'drew_waga_set': true},
         if (plastWagaJedn != null) ...{'plast_waga_jedn': plastWagaJedn, 'plast_waga_set': true},
@@ -314,6 +323,39 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'kwg_type':        d.kwgType,
         'createdAt':       FieldValue.serverTimestamp(),
       });
+
+      // ── Skrzynie MB → zwrot w saldzie dostawcy (auto, per odmiana, idempotentnie) ──
+      // MB są nasze => dostawca je oddaje z dostawą => saldo +. Doc id per LOT+typ,
+      // więc ponowny zapis karty nie dubluje (set nadpisuje, 0 => delete).
+      {
+        final lokalizacja = d.kwgType.isNotEmpty ? d.kwgType : 'Grójecka';
+        final mbZwroty = <String, int>{
+          'drewno':  mbDrewCnt,
+          'plastik': mbPlastCnt,
+          'metal':   mbMetalCnt,
+        };
+        mbZwroty.forEach((typ, ilosc) {
+          final loanRef = db.collection(AppConstants.colCrateLoans).doc('karta_${docId}_$typ');
+          if (ilosc > 0) {
+            batch.set(loanRef, {
+              'dostawca_id':    d.dostawcaKod,
+              'dostawca_nazwa': d.dostawcaNazwa,
+              'typ':            typ,
+              'kierunek':       'zwrot',
+              'ilosc':          ilosc,
+              'delta':          ilosc,
+              'lokalizacja':    lokalizacja,
+              'user_name':      userName,
+              'notatka':        'Zwrot z dostawą (karta $lot)',
+              'zrodlo':         'karta',
+              'lot':            lot,
+              'createdAt':      FieldValue.serverTimestamp(),
+            });
+          } else {
+            batch.delete(loanRef);
+          }
+        });
+      }
 
       // mcrQueue
       final mcrRef = db.collection(AppConstants.colMcrQueue).doc();
@@ -764,9 +806,9 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
               const Text('Skrzynie MB',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
               const SizedBox(width: 6),
-              if (!o.mbVisible && (int.tryParse(o.mbDrewCtrl.text) ?? 0) + (int.tryParse(o.mbPlastCtrl.text) ?? 0) > 0)
+              if (!o.mbVisible && (int.tryParse(o.mbDrewCtrl.text) ?? 0) + (int.tryParse(o.mbPlastCtrl.text) ?? 0) + (int.tryParse(o.mbMetalCtrl.text) ?? 0) > 0)
                 Text(
-                  '${o.mbDrewCtrl.text}D / ${o.mbPlastCtrl.text}P',
+                  '${o.mbDrewCtrl.text.isEmpty ? "0" : o.mbDrewCtrl.text}D / ${o.mbPlastCtrl.text.isEmpty ? "0" : o.mbPlastCtrl.text}P / ${o.mbMetalCtrl.text.isEmpty ? "0" : o.mbMetalCtrl.text}M',
                   style: const TextStyle(fontSize: 12, color: AppTheme.warningOrange,
                       fontWeight: FontWeight.w600),
                 ),
@@ -784,6 +826,12 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
               Expanded(child: _KwgNumField('Sk. MB plast.', o.mbPlastCtrl)),
               const SizedBox(width: 8),
               Expanded(child: _KwgNumField('Waga 1 szt. MB plast. [kg]', o.mbPlastWagaCtrl)),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(child: _KwgNumField('Sk. MB metal.', o.mbMetalCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _KwgNumField('Waga 1 szt. MB metal. [kg]', o.mbMetalWagaCtrl)),
             ]),
           ],
           const SizedBox(height: 8),
