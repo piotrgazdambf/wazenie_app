@@ -81,12 +81,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
   final _plastIlCtrl = TextEditingController();
   final _plastWgCtrl = TextEditingController();
 
-  // Skrzynie MB (własne MBF)
+  // Skrzynie MB (własne MBF: drewno / plastik / metal)
   bool  _maMbSkrzynie  = false;
   final _mbDrewIlCtrl  = TextEditingController();
   final _mbDrewWgCtrl  = TextEditingController(text: '60');
   final _mbPlastIlCtrl = TextEditingController();
   final _mbPlastWgCtrl = TextEditingController();
+  final _mbMetalIlCtrl = TextEditingController();
+  final _mbMetalWgCtrl = TextEditingController(text: '65');
 
   // Wyniki (auto)
   double _brutto    = 0;
@@ -124,6 +126,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       _a1ZalCtrl, _a1RozCtrl, _a2ZalCtrl, _a2RozCtrl,
       _drewIlCtrl, _drewWgCtrl, _plastIlCtrl, _plastWgCtrl,
       _mbDrewIlCtrl, _mbDrewWgCtrl, _mbPlastIlCtrl, _mbPlastWgCtrl,
+      _mbMetalIlCtrl, _mbMetalWgCtrl,
     ];
     for (final c in callers) {
       c.addListener(_recalc);
@@ -159,6 +162,7 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       _a1ZalCtrl, _a1RozCtrl, _a2ZalCtrl, _a2RozCtrl,
       _drewIlCtrl, _drewWgCtrl, _plastIlCtrl, _plastWgCtrl,
       _mbDrewIlCtrl, _mbDrewWgCtrl, _mbPlastIlCtrl, _mbPlastWgCtrl,
+      _mbMetalIlCtrl, _mbMetalWgCtrl,
       _nettoCtrl,
     ]) {
       c.dispose();
@@ -202,10 +206,12 @@ class _KwScreenState extends ConsumerState<KwScreen> {
 
     final mbDrew   = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
     final mbPlast  = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
+    final mbMetal  = _maMbSkrzynie ? _pi(_mbMetalIlCtrl.text) : 0;
     final wMbDrew  = _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0.0;
     final wMbPlast = _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0.0;
+    final wMbMetal = _maMbSkrzynie ? _p(_mbMetalWgCtrl.text)  : 0.0;
 
-    final taraMb    = mbDrew * wMbDrew + mbPlast * wMbPlast;
+    final taraMb    = mbDrew * wMbDrew + mbPlast * wMbPlast + mbMetal * wMbMetal;
 
     final double brutto;
     final double netto;
@@ -281,8 +287,10 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     // Skrzynie MB liczą się tak samo — dostawa może być w samych skrzyniach MB
     final _mbDrewIl  = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
     final _mbPlastIl = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
+    final _mbMetalIl = _maMbSkrzynie ? _pi(_mbMetalIlCtrl.text) : 0;
     if (_isJablkoGruszka || !_znaNetto) {
-      if (_drewIl == 0 && _plastIl == 0 && _mbDrewIl == 0 && _mbPlastIl == 0) {
+      if (_drewIl == 0 && _plastIl == 0 &&
+          _mbDrewIl == 0 && _mbPlastIl == 0 && _mbMetalIl == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Podaj ilość skrzyń (drewniane, plastikowe lub MB)'),
@@ -313,6 +321,15 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Podaj wagę skrzyni MB drewnianej [kg]'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        return;
+      }
+      if (_mbMetalIl > 0 && _p(_mbMetalWgCtrl.text) == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Podaj wagę skrzyni MB metalowej [kg]'),
             backgroundColor: AppTheme.errorRed,
           ),
         );
@@ -374,8 +391,10 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       final plastCount    = _pi(o.plastCtrl.text);
       final mbDrewCount   = _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0;
       final mbPlastCount  = _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0;
+      final mbMetalCount  = _maMbSkrzynie ? _pi(_mbMetalIlCtrl.text) : 0;
       final mbDrewWaga    = _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0.0;
       final mbPlastWaga   = _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0.0;
+      final mbMetalWaga   = _maMbSkrzynie ? _p(_mbMetalWgCtrl.text)  : 0.0;
       final dateStr       = '${d.data.year}-${d.data.month.toString().padLeft(2,'0')}-${d.data.day.toString().padLeft(2,'0')}';
 
       // deliveries
@@ -411,12 +430,14 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'waga_a2_zal':       (!_znaNetto && _drugiAut) ? _p(_a2ZalCtrl.text) : 0,
         'waga_a2_roz':       (!_znaNetto && _drugiAut) ? _p(_a2RozCtrl.text) : 0,
         if (_znaNetto) 'znana_netto': true,
-        // Skrzynie MB
+        // Skrzynie MB (drewno / plastik / metal)
         if (_maMbSkrzynie) ...{
           'mb_drew_il':    mbDrewCount,
           'mb_drew_waga':  mbDrewWaga,
           'mb_plast_il':   mbPlastCount,
           'mb_plast_waga': mbPlastWaga,
+          'mb_metal_il':   mbMetalCount,
+          'mb_metal_waga': mbMetalWaga,
         },
         if (_rozneWagi && wagiGrupyData.isNotEmpty) ...{
           'rozne_wagi':  true,
@@ -452,32 +473,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'createdAt':       FieldValue.serverTimestamp(),
       });
 
-      // crateState dla Skrzyń MB (osobny wpis informacyjny)
-      if (_maMbSkrzynie && (mbDrewCount + mbPlastCount) > 0) {
-        final mbRef = db.collection(AppConstants.colCrateStates).doc('${docId}_mb');
-        batch.set(mbRef, {
-          'lot':             '${lot}_MB',
-          'odmiana':         o.nazwaCtrl.text.trim(),
-          'owoc':            d.owoc,
-          'dostawca':        'Skrzynie MB',
-          'dostawca_kod':    'MB',
-          'przeznaczenie':   effectivePrzeznaczenie,
-          'nr_dostawy':      d.nrDostawy,
-          'data':            dateStr,
-          'drew_total':      mbDrewCount,
-          'plast_total':     mbPlastCount,
-          'drew_remaining':  mbDrewCount,
-          'plast_remaining': mbPlastCount,
-          'drew_waga_jedn':  mbDrewWaga,
-          'plast_waga_jedn': mbPlastWaga,
-          'kg_total':        0,
-          'kg_remaining':    0,
-          'active':          true,
-          'is_mb':           true,
-          'is_kwg':          false,
-          'createdAt':       FieldValue.serverTimestamp(),
-        });
-      }
+      // Skrzynie MB NIE trafiają już do stanów pustych skrzyń — są naszą własnością
+      // i śledzimy je przez saldo dostawcy (zwrot tworzony raz na kartę, poniżej pętli).
 
       // mcrQueue
       final mcrRef = db.collection(AppConstants.colMcrQueue).doc();
@@ -509,6 +506,44 @@ class _KwScreenState extends ConsumerState<KwScreen> {
           'createdAt':    FieldValue.serverTimestamp(),
         });
       }
+    }
+
+    // ── Skrzynie MB → zwrot w saldzie dostawcy (auto, raz na kartę) ──────────────
+    // Dostawa przyjechała w naszych skrzyniach MBF => dostawca je oddaje => saldo +.
+    // Doc ID powiązany z numerem dostawy/LOT, więc ponowny zapis karty NIE dubluje
+    // (set nadpisuje, a typ z ilością 0 jest usuwany).
+    {
+      final kartaKey = (d.nrDostawy.trim().isNotEmpty
+              ? d.nrDostawy.trim()
+              : d.lotForOdmiana(0, _odm.length))
+          .replaceAll('/', '_');
+      final mbZwroty = <String, ({int ilosc, double waga})>{
+        'drewno':  (ilosc: _maMbSkrzynie ? _pi(_mbDrewIlCtrl.text)  : 0, waga: _p(_mbDrewWgCtrl.text)),
+        'plastik': (ilosc: _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0, waga: _p(_mbPlastWgCtrl.text)),
+        'metal':   (ilosc: _maMbSkrzynie ? _pi(_mbMetalIlCtrl.text) : 0, waga: _p(_mbMetalWgCtrl.text)),
+      };
+      mbZwroty.forEach((typ, v) {
+        final loanRef = db.collection(AppConstants.colCrateLoans).doc('karta_${kartaKey}_$typ');
+        if (v.ilosc > 0) {
+          batch.set(loanRef, {
+            'dostawca_id':    d.dostawcaKod,
+            'dostawca_nazwa': d.dostawcaNazwa,
+            'typ':            typ,
+            'kierunek':       'zwrot',
+            'ilosc':          v.ilosc,
+            'delta':          v.ilosc,            // zwrot => saldo w górę (zeruje minus)
+            'lokalizacja':    'Czaplin',
+            'user_name':      userName,
+            'notatka':        'Zwrot z dostawą (karta $kartaKey)',
+            'zrodlo':         'karta',
+            'lot':            kartaKey,
+            'createdAt':      FieldValue.serverTimestamp(),
+          });
+        } else {
+          // edycja karty mogła wyzerować ten typ — usuń ewentualny poprzedni wpis
+          batch.delete(loanRef);
+        }
+      });
     }
 
     // Zbuduj dane PDF i etykiet przed commitem (pola mogą zostać wyczyszczone)
@@ -570,6 +605,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
     _mbDrewWgCtrl.text = '60';
     _mbPlastIlCtrl.clear();
     _mbPlastWgCtrl.clear();
+    _mbMetalIlCtrl.clear();
+    _mbMetalWgCtrl.text = '65';
     _nettoCtrl.clear();
 
     for (final g in _wagiGrupy) g.dispose();
@@ -877,6 +914,12 @@ class _KwScreenState extends ConsumerState<KwScreen> {
               Expanded(child: _NumField('Skrz. MB plast.', _mbPlastIlCtrl)),
               const SizedBox(width: 8),
               Expanded(child: _NumField('Waga 1 szt. MB [kg]', _mbPlastWgCtrl)),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _NumField('Skrz. MB metal.', _mbMetalIlCtrl)),
+              const SizedBox(width: 8),
+              Expanded(child: _NumField('Waga 1 szt. MB [kg]', _mbMetalWgCtrl)),
             ]),
             const SizedBox(height: 4),
             _AutoCalcRow('TARA MB łącznie', _taraMb),
@@ -1234,6 +1277,8 @@ class _KwScreenState extends ConsumerState<KwScreen> {
       mbDrewWagaJedn:   _maMbSkrzynie ? _p(_mbDrewWgCtrl.text)   : 0,
       mbPlastIl:        _maMbSkrzynie ? _pi(_mbPlastIlCtrl.text) : 0,
       mbPlastWagaJedn:  _maMbSkrzynie ? _p(_mbPlastWgCtrl.text)  : 0,
+      mbMetalIl:        _maMbSkrzynie ? _pi(_mbMetalIlCtrl.text) : 0,
+      mbMetalWagaJedn:  _maMbSkrzynie ? _p(_mbMetalWgCtrl.text)  : 0,
       wagaBrutto:       _brutto,
       wagaNetto:     _netto,
       odmiany:       _odm.map((o) => KwOdmianaData(

@@ -68,6 +68,8 @@ class KwPdfData {
   final double mbDrewWagaJedn;
   final int mbPlastIl;
   final double mbPlastWagaJedn;
+  final int mbMetalIl;
+  final double mbMetalWagaJedn;
   final double wagaBrutto;
   final double wagaNetto;
   final List<KwOdmianaData> odmiany;
@@ -99,6 +101,8 @@ class KwPdfData {
     this.mbDrewWagaJedn = 20,
     this.mbPlastIl = 0,
     this.mbPlastWagaJedn = 10,
+    this.mbMetalIl = 0,
+    this.mbMetalWagaJedn = 65,
     required this.wagaBrutto,
     required this.wagaNetto,
     required this.odmiany,
@@ -150,6 +154,8 @@ class KwPdfData {
       mbDrewWagaJedn:   (d['mb_drew_waga'] is num) ? (d['mb_drew_waga'] as num).toDouble() : 20,
       mbPlastIl:        (d['mb_plast_il'] is int)  ? d['mb_plast_il'] as int  : pi(d['mb_plast_il']?.toString()  ?? '0'),
       mbPlastWagaJedn:  (d['mb_plast_waga'] is num)? (d['mb_plast_waga'] as num).toDouble(): 10,
+      mbMetalIl:        (d['mb_metal_il'] is int)  ? d['mb_metal_il'] as int  : pi(d['mb_metal_il']?.toString()  ?? '0'),
+      mbMetalWagaJedn:  (d['mb_metal_waga'] is num)? (d['mb_metal_waga'] as num).toDouble(): 65,
       wagaBrutto:       wagaBrutto,
       wagaNetto:    _parseNettoTotal(d['waga_netto_total'], wagaNetto),
       odmiany: [
@@ -263,6 +269,8 @@ class KwPdfData {
       mbDrewWagaJedn: (d0['mb_drew_waga'] is num)  ? (d0['mb_drew_waga'] as num).toDouble() : 20,
       mbPlastIl:      (d0['mb_plast_il']  is int)  ? d0['mb_plast_il']  as int  : pi(d0['mb_plast_il']?.toString()  ?? '0'),
       mbPlastWagaJedn:(d0['mb_plast_waga'] is num) ? (d0['mb_plast_waga'] as num).toDouble() : 10,
+      mbMetalIl:      (d0['mb_metal_il']  is int)  ? d0['mb_metal_il']  as int  : pi(d0['mb_metal_il']?.toString()  ?? '0'),
+      mbMetalWagaJedn:(d0['mb_metal_waga'] is num) ? (d0['mb_metal_waga'] as num).toDouble() : 65,
       wagaBrutto:  wagaBrutto,
       wagaNetto:   _parseNettoTotal(d0['waga_netto_total'], totalNetto),
       odmiany:     odmiany,
@@ -334,7 +342,8 @@ class KwPdfGenerator {
         : d.plastIl * d.plastWagaJedn;
     final taraMbDrew  = d.mbDrewIl  * d.mbDrewWagaJedn;
     final taraMbPlast = d.mbPlastIl * d.mbPlastWagaJedn;
-    final hasMb       = d.mbDrewIl > 0 || d.mbPlastIl > 0;
+    final taraMbMetal = d.mbMetalIl * d.mbMetalWagaJedn;
+    final hasMb       = d.mbDrewIl > 0 || d.mbPlastIl > 0 || d.mbMetalIl > 0;
 
     pw.Widget chk(bool checked) => pw.Container(
       width: 12, height: 12,
@@ -479,6 +488,8 @@ class KwPdfGenerator {
                   _w3skrzynie('2a', 'Ilość skrzyń MB drewnianych',  d.mbDrewIl,  d.mbDrewWagaJedn,  taraMbDrew,  pad, sR9, sB9),
                 if (hasMb && d.mbPlastIl > 0)
                   _w3skrzynie('3a', 'Ilość skrzyń MB plastikowych', d.mbPlastIl, d.mbPlastWagaJedn, taraMbPlast, pad, sR9, sB9),
+                if (hasMb && d.mbMetalIl > 0)
+                  _w3skrzynie('4a', 'Ilość skrzyń MB metalowych',   d.mbMetalIl, d.mbMetalWagaJedn, taraMbMetal, pad, sR9, sB9),
                 ...List.generate(4, (i) {
                   final hasO = i < d.odmiany.length;
                   final o    = hasO ? d.odmiany[i] : null;
@@ -543,6 +554,8 @@ class KwPdfGenerator {
                   _w3skrzynie('5a', 'Ilość skrzyń MB drewnianych',  d.mbDrewIl,  d.mbDrewWagaJedn,  taraMbDrew,  pad, sR9, sB9),
                 if (hasMb && d.mbPlastIl > 0)
                   _w3skrzynie('6a', 'Ilość skrzyń MB plastikowych', d.mbPlastIl, d.mbPlastWagaJedn, taraMbPlast, pad, sR9, sB9),
+                if (hasMb && d.mbMetalIl > 0)
+                  _w3skrzynie('7a', 'Ilość skrzyń MB metalowych',   d.mbMetalIl, d.mbMetalWagaJedn, taraMbMetal, pad, sR9, sB9),
                 _w3('7', 'WAGA SUROWCA BRUTTO', _n(d.wagaBrutto), pad, sB9, sB9),
                 pw.TableRow(children: [
                   pw.Container(padding: padH, child: pw.Text('8', style: sB9)),
