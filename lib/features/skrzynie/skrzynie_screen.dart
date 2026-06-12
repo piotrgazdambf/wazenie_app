@@ -141,7 +141,7 @@ class SkrzynieScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return OfflineOverflowGuard(
       child: DefaultTabController(
-        length: 3,
+        length: 4,
         child: Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppBar(
@@ -165,6 +165,7 @@ class SkrzynieScreen extends ConsumerWidget {
                 Tab(text: 'Stany skrzyń'),
                 Tab(text: 'Akcje skrzyń'),
                 Tab(text: 'Wypożyczenia MBF'),
+                Tab(text: 'Historia MBF'),
               ]),
           ),
           body: Column(children: [
@@ -173,6 +174,7 @@ class SkrzynieScreen extends ConsumerWidget {
               _StanyTab(),
               _AkcjeTab(),
               MbfLoansTab(),
+              MbfHistoryTab(),
             ])),
           ]),
         ),

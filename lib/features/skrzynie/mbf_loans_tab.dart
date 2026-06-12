@@ -325,6 +325,135 @@ class _HistoriaSheet extends StatelessWidget {
   }
 }
 
+// ── TAB: Historia MBF (pełny log wszystkich operacji) ─────────────────────────
+
+class MbfHistoryTab extends ConsumerStatefulWidget {
+  const MbfHistoryTab({super.key});
+  @override
+  ConsumerState<MbfHistoryTab> createState() => _MbfHistoryTabState();
+}
+
+class _MbfHistoryTabState extends ConsumerState<MbfHistoryTab> {
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() { _searchCtrl.dispose(); super.dispose(); }
+
+  Future<void> _delete(String id) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Usuń operację'),
+        content: const Text('Usunąć tę operację? Saldo dostawcy zostanie przeliczone bez niej.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Usuń', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await FirebaseFirestore.instance.collection(AppConstants.colCrateLoans).doc(id).delete();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(crateLoansProvider);
+    final isAdmin = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
+    final q = _searchCtrl.text.trim().toLowerCase();
+
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        child: TextField(
+          controller: _searchCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Szukaj po dostawcy…',
+            prefixIcon: Icon(Icons.search),
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+      ),
+      Expanded(
+        child: async.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Błąd: $e')),
+          data: (ops) {
+            final list = q.isEmpty ? ops
+                : ops.where((o) => o.dostawcaNazwa.toLowerCase().contains(q)).toList();
+            if (list.isEmpty) {
+              return const Center(child: Text('Brak operacji MBF',
+                  style: TextStyle(color: AppTheme.textSecondary)));
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+              itemCount: list.length,
+              itemBuilder: (_, i) {
+                final o = list[i];
+                final wyd = o.kierunek == 'wydanie';
+                final col = wyd ? AppTheme.errorRed : AppTheme.successGreen;
+                final dt = o.createdAt;
+                final dstr = dt != null
+                    ? '${dt.day.toString().padLeft(2,'0')}.${dt.month.toString().padLeft(2,'0')}.${dt.year}  ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}'
+                    : '';
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                    child: Row(children: [
+                      Container(
+                        width: 36, height: 36,
+                        decoration: BoxDecoration(color: col.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                        child: Icon(wyd ? Icons.north_east : Icons.south_west, size: 18, color: col),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Expanded(child: Text(o.dostawcaNazwa.isNotEmpty ? o.dostawcaNazwa : '—',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(color: col.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                            child: Text(wyd ? 'Wydanie' : 'Zwrot',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: col)),
+                          ),
+                        ]),
+                        const SizedBox(height: 2),
+                        Text('${o.ilosc} szt. ${mbfTypLabel(o.typ).toLowerCase()}  •  ${o.lokalizacja}',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: col)),
+                        if (o.notatka.isNotEmpty)
+                          Text(o.notatka, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                        Row(children: [
+                          Text(dstr, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          if (o.userName.isNotEmpty) ...[
+                            const Text('  •  ', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                            Text(o.userName, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                          ],
+                        ]),
+                      ])),
+                      if (isAdmin)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
+                          onPressed: () => _delete(o.id),
+                          tooltip: 'Usuń operację',
+                        ),
+                    ]),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ]);
+  }
+}
+
 // ── Dialog nowej operacji ─────────────────────────────────────────────────────
 
 class NowaOperacjaMbfDialog extends StatefulWidget {
