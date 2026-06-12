@@ -836,10 +836,10 @@ class KwPdfGenerator {
                     pw.Text('$il', style: bs),
                     pw.Text('  |  ', style: s),
                     pw.Text('WAGA/szt: ', style: s),
-                    pw.Text('${wagaJedn.toStringAsFixed(0)} kg', style: bs),
+                    pw.Text('${_n(wagaJedn)} kg', style: bs),
                     pw.Text('  |  ', style: s),
                     pw.Text('TARA: ', style: s),
-                    pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
+                    pw.Text('${_n(tara)} kg', style: bs),
                   ]),
         ),
       ]);
@@ -867,7 +867,7 @@ class KwPdfGenerator {
                   pw.Row(children: [
                     pw.Text('$il', style: bs),
                     pw.Text('  |  TARA: ', style: s),
-                    pw.Text('${tara.toStringAsFixed(0)} kg', style: bs),
+                    pw.Text('${_n(tara)} kg', style: bs),
                     pw.Text('  (różne wagi)', style: s),
                   ]),
                   pw.SizedBox(height: 2),
@@ -881,12 +881,17 @@ class KwPdfGenerator {
     final drew  = grupy.where((g) => g.typ == 'drew').toList();
     final plast = grupy.where((g) => g.typ == 'plast').toList();
     String fmt(List<KwWagaGrupa> list) =>
-        list.map((g) => '${g.ilosc}×${g.wagaJedn.toStringAsFixed(0)}kg').join(',  ');
+        list.map((g) => '${g.ilosc}×${_n(g.wagaJedn)}kg').join(',  ');
     final parts = <String>[];
     if (drew.isNotEmpty)  parts.add('Drew: ${fmt(drew)}');
     if (plast.isNotEmpty) parts.add('Plast: ${fmt(plast)}');
     return parts.join('   |   ');
   }
 
-  static String _n(double v) => v.toStringAsFixed(0);
+  // Format liczby po polsku: przecinek, bez zbędnych zer (14.4 -> "14,4", 14.0 -> "14")
+  static String _n(double v) {
+    var s = v.toStringAsFixed(2);
+    s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+    return s.replaceAll('.', ',');
+  }
 }

@@ -544,7 +544,14 @@ String _intStr(dynamic v) {
 
 String _dblStr(dynamic v) {
   if (v == null) return '';
-  if (v is double) return v == 0 ? '' : v.round().toString();
+  if (v is double) {
+    if (v == 0) return '';
+    // zachowaj miejsca po przecinku (14.4 -> "14,4", 14.0 -> "14")
+    var s = v.toStringAsFixed(2)
+        .replaceAll(RegExp(r'0+$'), '')
+        .replaceAll(RegExp(r'\.$'), '');
+    return s.replaceAll('.', ',');
+  }
   if (v is int) return v == 0 ? '' : v.toString();
   final s = v.toString();
   return s == '0' || s == '0.0' ? '' : s;
