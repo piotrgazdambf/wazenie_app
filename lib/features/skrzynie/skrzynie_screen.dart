@@ -25,6 +25,11 @@ class CrateState {
   final int plastTotal;
   final int drewRemaining;
   final int plastRemaining;
+  // Rozbicie remaining na z produktem (pelne) i puste do wydania (puste)
+  final int drewPelne;
+  final int plastPelne;
+  final int drewPuste;
+  final int plastPuste;
   final double drewWagaJedn;
   final double plastWagaJedn;
   final double kgTotal;
@@ -38,6 +43,8 @@ class CrateState {
     required this.nrDostawy, required this.data,
     required this.drewTotal, required this.plastTotal,
     required this.drewRemaining, required this.plastRemaining,
+    required this.drewPelne, required this.plastPelne,
+    required this.drewPuste, required this.plastPuste,
     required this.drewWagaJedn, required this.plastWagaJedn,
     required this.kgTotal, required this.kgRemaining,
     required this.active, required this.isKwg,
@@ -52,6 +59,11 @@ class CrateState {
     plastTotal:     (d['plast_total']     as num?)?.toInt()    ?? 0,
     drewRemaining:  (d['drew_remaining']  as num?)?.toInt()    ?? 0,
     plastRemaining: (d['plast_remaining'] as num?)?.toInt()    ?? 0,
+    // Stare dostawy bez pól pelne/puste: traktuj jako w całości PUSTE (jak dawniej)
+    drewPelne:      (d['drew_pelne']  as num?)?.toInt() ?? 0,
+    plastPelne:     (d['plast_pelne'] as num?)?.toInt() ?? 0,
+    drewPuste:      (d['drew_puste']  as num?)?.toInt() ?? (d['drew_remaining']  as num?)?.toInt() ?? 0,
+    plastPuste:     (d['plast_puste'] as num?)?.toInt() ?? (d['plast_remaining'] as num?)?.toInt() ?? 0,
     drewWagaJedn:   (d['drew_waga_jedn']  as num?)?.toDouble() ?? 20.0,
     plastWagaJedn:  (d['plast_waga_jedn'] as num?)?.toDouble() ?? 10.0,
     kgTotal:        (d['kg_total']        as num?)?.toDouble() ?? 0,
@@ -141,7 +153,7 @@ class SkrzynieScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return OfflineOverflowGuard(
       child: DefaultTabController(
-        length: 4,
+        length: 5,
         child: Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppBar(
@@ -162,7 +174,8 @@ class SkrzynieScreen extends ConsumerWidget {
               unselectedLabelColor: Colors.white70,
               indicatorColor: Colors.white,
               tabs: [
-                Tab(text: 'Stany skrzyń'),
+                Tab(text: 'Stany skrzyń pustych'),
+                Tab(text: 'Stany skrzyń z produktem'),
                 Tab(text: 'Akcje skrzyń'),
                 Tab(text: 'Wypożyczenia MBF'),
                 Tab(text: 'Historia MBF'),
@@ -171,7 +184,8 @@ class SkrzynieScreen extends ConsumerWidget {
           body: Column(children: [
             const OfflineBanner(),
             const Expanded(child: TabBarView(children: [
-              _StanyTab(),
+              _StanyTab(tryb: _StanTryb.puste),
+              _StanyTab(tryb: _StanTryb.zProduktem),
               _AkcjeTab(),
               MbfLoansTab(),
               MbfHistoryTab(),
@@ -183,10 +197,17 @@ class SkrzynieScreen extends ConsumerWidget {
   }
 }
 
-// ── TAB 1: STANY ──────────────────────────────────────────────────────────────
+// ── TAB: STANY (puste lub z produktem) ────────────────────────────────────────
+
+enum _StanTryb { puste, zProduktem }
 
 class _StanyTab extends ConsumerWidget {
-  const _StanyTab();
+  final _StanTryb tryb;
+  const _StanyTab({required this.tryb});
+
+  bool get _puste => tryb == _StanTryb.puste;
+  int _drew(CrateState c)  => _puste ? c.drewPuste  : c.drewPelne;
+  int _plast(CrateState c) => _puste ? c.plastPuste : c.plastPelne;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -195,11 +216,13 @@ class _StanyTab extends ConsumerWidget {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Błąd: $e')),
-      data: (list) {
+      data: (listAll) {
+        // tylko dostawcy z niezerowym stanem w tym trybie
+        final list = listAll.where((c) => _drew(c) + _plast(c) > 0).toList();
         if (list.isEmpty) return const _EmptyView();
 
-        final totalDrew  = list.fold(0, (s, c) => s + c.drewRemaining);
-        final totalPlast = list.fold(0, (s, c) => s + c.plastRemaining);
+        final totalDrew  = list.fold(0, (s, c) => s + _drew(c));
+        final totalPlast = list.fold(0, (s, c) => s + _plast(c));
 
         // Agreguj per dostawca
         final Map<String, ({int drew, int plast, List<CrateState> lots})> byDostawca = {};
@@ -210,8 +233,8 @@ class _StanyTab extends ConsumerWidget {
           }
           final prev = byDostawca[d]!;
           byDostawca[d] = (
-            drew: prev.drew + c.drewRemaining,
-            plast: prev.plast + c.plastRemaining,
+            drew: prev.drew + _drew(c),
+            plast: prev.plast + _plast(c),
             lots: [...prev.lots, c],
           );
         }
@@ -235,7 +258,7 @@ class _StanyTab extends ConsumerWidget {
               child: Row(children: [
                 const CrateIcon(size: 16, color: Colors.white70),
                 const SizedBox(width: 8),
-                const Text('STANY SKRZYŃ', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+                Text(_puste ? 'STANY SKRZYŃ PUSTYCH' : 'STANY SKRZYŃ Z PRODUKTEM', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
                 const Spacer(),
                 _SumBadge('Drewniane', '$totalDrew szt.'),
                 const SizedBox(width: 16),
@@ -269,7 +292,7 @@ class _StanyTab extends ConsumerWidget {
                   final isLast = i == sorted.length - 1;
                   final isAdmin = ref.watch(currentSessionProvider)?.user.isAdmin ?? false;
                   return InkWell(
-                    onTap: () => _showDostawcaLots(context, e.key, e.value.lots, userName),
+                    onTap: () => _showDostawcaLots(context, e.key, e.value.lots, userName, _puste),
                     child: Container(
                       decoration: BoxDecoration(
                         color: i.isEven ? Colors.white : AppTheme.background,
@@ -306,7 +329,7 @@ class _StanyTab extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        if (isAdmin)
+                        if (isAdmin && _puste)
                           SizedBox(
                             width: 36,
                             child: IconButton(
@@ -328,12 +351,12 @@ class _StanyTab extends ConsumerWidget {
     );
   }
 
-  void _showDostawcaLots(BuildContext context, String dostawca, List<CrateState> lots, String userName) {
+  void _showDostawcaLots(BuildContext context, String dostawca, List<CrateState> lots, String userName, bool wydaj) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _DostawcaLotsSheet(dostawca: dostawca, lots: lots, userName: userName),
+      builder: (_) => _DostawcaLotsSheet(dostawca: dostawca, lots: lots, userName: userName, wydaj: wydaj),
     );
   }
 
@@ -363,7 +386,11 @@ class _DostawcaLotsSheet extends StatelessWidget {
   final String dostawca;
   final List<CrateState> lots;
   final String userName;
-  const _DostawcaLotsSheet({required this.dostawca, required this.lots, required this.userName});
+  final bool wydaj; // true = tryb pustych (można wydawać), false = z produktem (podgląd)
+  const _DostawcaLotsSheet({required this.dostawca, required this.lots, required this.userName, required this.wydaj});
+
+  int _d(CrateState c) => wydaj ? c.drewPuste  : c.drewPelne;
+  int _p(CrateState c) => wydaj ? c.plastPuste : c.plastPelne;
 
   @override
   Widget build(BuildContext context) {
@@ -395,8 +422,8 @@ class _DostawcaLotsSheet extends StatelessWidget {
               itemBuilder: (_, i) {
                 // Pierwsza pozycja — WSZYSTKIE
                 if (i == 0) {
-                  final totalDrew  = lots.fold(0, (s, c) => s + c.drewRemaining);
-                  final totalPlast = lots.fold(0, (s, c) => s + c.plastRemaining);
+                  final totalDrew  = lots.fold(0, (s, c) => s + _d(c));
+                  final totalPlast = lots.fold(0, (s, c) => s + _p(c));
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     color: AppTheme.primaryDark,
@@ -409,27 +436,29 @@ class _DostawcaLotsSheet extends StatelessWidget {
                           Text('${totalDrew}D + ${totalPlast}P',
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
                         ]),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: (totalDrew + totalPlast) > 0 ? () {
-                              Navigator.of(context).pop();
-                              showDialog<void>(
-                                context: context,
-                                builder: (_) => _ZdejmijWszystkieDialog(dostawca: dostawca, lots: lots, userName: userName),
-                              );
-                            } : null,
-                            icon: const Icon(Icons.remove_circle_outline, size: 16),
-                            label: const Text('Wydaj skrzynie'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white70,
-                              side: const BorderSide(color: Colors.white38),
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              textStyle: const TextStyle(fontSize: 12),
+                        if (wydaj) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: (totalDrew + totalPlast) > 0 ? () {
+                                Navigator.of(context).pop();
+                                showDialog<void>(
+                                  context: context,
+                                  builder: (_) => _ZdejmijWszystkieDialog(dostawca: dostawca, lots: lots, userName: userName),
+                                );
+                              } : null,
+                              icon: const Icon(Icons.remove_circle_outline, size: 16),
+                              label: const Text('Wydaj skrzynie'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                side: const BorderSide(color: Colors.white38),
+                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                textStyle: const TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ]),
                     ),
                   );
@@ -446,35 +475,37 @@ class _DostawcaLotsSheet extends StatelessWidget {
                           c.odmiana.isNotEmpty ? c.odmiana : c.owoc,
                           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                         )),
-                        Text('${c.drewRemaining}D + ${c.plastRemaining}P',
+                        Text('${_d(c)}D + ${_p(c)}P',
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryMid)),
                       ]),
                       Text('${c.przeznaczenie}  •  Dost. ${c.nrDostawy}  •  ${c.data}',
                           style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                       Text(c.lot, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: c.totalCratesRemaining > 0
-                              ? () {
-                                  Navigator.of(context).pop();
-                                  showDialog<void>(
-                                    context: context,
-                                    builder: (_) => _ZdejmijDialog(state: c, userName: userName),
-                                  );
-                                }
-                              : null,
-                          icon: const Icon(Icons.remove_circle_outline, size: 16),
-                          label: const Text('Wydaj skrzynie'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.errorRed,
-                            side: const BorderSide(color: AppTheme.errorRed),
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            textStyle: const TextStyle(fontSize: 12),
+                      if (wydaj) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: (_d(c) + _p(c)) > 0
+                                ? () {
+                                    Navigator.of(context).pop();
+                                    showDialog<void>(
+                                      context: context,
+                                      builder: (_) => _ZdejmijDialog(state: c, userName: userName),
+                                    );
+                                  }
+                                : null,
+                            icon: const Icon(Icons.remove_circle_outline, size: 16),
+                            label: const Text('Wydaj skrzynie'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.errorRed,
+                              side: const BorderSide(color: AppTheme.errorRed),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              textStyle: const TextStyle(fontSize: 12),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ]),
                   ),
                 );
@@ -639,8 +670,8 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
   double get _kgDoZdjecia => widget.state.kgForRemoval(_drewN, _plastN);
   bool get _valid =>
       (_drewN + _plastN) > 0 &&
-      _drewN <= widget.state.drewRemaining &&
-      _plastN <= widget.state.plastRemaining;
+      _drewN <= widget.state.drewPuste &&
+      _plastN <= widget.state.plastPuste;
 
   Future<void> _confirm() async {
     if (!_valid) return;
@@ -652,9 +683,12 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
       final db  = FirebaseFirestore.instance;
       final now = DateTime.now();
 
+      // Wydanie pustych skrzyń: znikają fizycznie (remaining) i z puli pustych (puste)
       await db.collection(AppConstants.colCrateStates).doc(s.id).update({
         'drew_remaining':  s.drewRemaining - _drewN,
         'plast_remaining': s.plastRemaining - _plastN,
+        'drew_puste':      s.drewPuste - _drewN,
+        'plast_puste':     s.plastPuste - _plastN,
         'kg_remaining':    (s.kgRemaining - kg).clamp(0.0, s.kgTotal),
         'active':          ((s.drewRemaining - _drewN) + (s.plastRemaining - _plastN)) > 0,
         'updatedAt':       FieldValue.serverTimestamp(),
@@ -698,7 +732,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
               border: Border.all(color: AppTheme.accent.withAlpha(60)),
             ),
             child: Text(
-              'Stan: ${s.drewRemaining}D + ${s.plastRemaining}P\n'
+              'Puste do wydania: ${s.drewPuste}D + ${s.plastPuste}P\n'
               '~${s.kgPerCrate.round()} kg/skrzynię',
               style: const TextStyle(fontSize: 12, color: AppTheme.primaryDark),
             ),
@@ -710,8 +744,8 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
               icon: const Icon(Icons.select_all, size: 16),
               label: const Text('Wydaj wszystkie'),
               onPressed: () => setState(() {
-                _drewCtrl.text  = s.drewRemaining.toString();
-                _plastCtrl.text = s.plastRemaining.toString();
+                _drewCtrl.text  = s.drewPuste.toString();
+                _plastCtrl.text = s.plastPuste.toString();
               }),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.errorRed,
@@ -725,7 +759,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
           Row(children: [
             Expanded(child: TextFormField(
               controller: _drewCtrl,
-              decoration: InputDecoration(labelText: 'Drewn. (max ${s.drewRemaining})'),
+              decoration: InputDecoration(labelText: 'Drewn. (max ${s.drewPuste})'),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (_) => setState(() {}),
@@ -733,7 +767,7 @@ class _ZdejmijDialogState extends State<_ZdejmijDialog> {
             const SizedBox(width: 10),
             Expanded(child: TextFormField(
               controller: _plastCtrl,
-              decoration: InputDecoration(labelText: 'Plast. (max ${s.plastRemaining})'),
+              decoration: InputDecoration(labelText: 'Plast. (max ${s.plastPuste})'),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (_) => setState(() {}),
@@ -826,8 +860,8 @@ class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
   int get _drewN  => int.tryParse(_drewCtrl.text.trim()) ?? 0;
   int get _plastN => int.tryParse(_plastCtrl.text.trim()) ?? 0;
 
-  int get _totalDrew  => widget.lots.fold(0, (s, c) => s + c.drewRemaining);
-  int get _totalPlast => widget.lots.fold(0, (s, c) => s + c.plastRemaining);
+  int get _totalDrew  => widget.lots.fold(0, (s, c) => s + c.drewPuste);
+  int get _totalPlast => widget.lots.fold(0, (s, c) => s + c.plastPuste);
 
   bool get _valid => (_drewN + _plastN) > 0 && _drewN <= _totalDrew && _plastN <= _totalPlast;
 
@@ -844,8 +878,8 @@ class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
       // Zdejmuj kolejno z lotów (od pierwszego)
       for (final c in widget.lots) {
         if (drewLeft <= 0 && plastLeft <= 0) break;
-        final dZdj = drewLeft.clamp(0, c.drewRemaining);
-        final pZdj = plastLeft.clamp(0, c.plastRemaining);
+        final dZdj = drewLeft.clamp(0, c.drewPuste);
+        final pZdj = plastLeft.clamp(0, c.plastPuste);
         if (dZdj + pZdj == 0) continue;
 
         final newDrew  = c.drewRemaining - dZdj;
@@ -853,6 +887,8 @@ class _ZdejmijWszystkieDialogState extends State<_ZdejmijWszystkieDialog> {
         batch.update(db.collection(AppConstants.colCrateStates).doc(c.id), {
           'drew_remaining':  newDrew,
           'plast_remaining': newPlast,
+          'drew_puste':      c.drewPuste - dZdj,
+          'plast_puste':     c.plastPuste - pZdj,
           'active':          (newDrew + newPlast) > 0,
           'updatedAt':       FieldValue.serverTimestamp(),
         });
@@ -1007,12 +1043,17 @@ class _KorektaDialogState extends State<_KorektaDialog> {
         final docId = widget.lots.first.id;
         final snap  = await db.collection(AppConstants.colCrateStates).doc(docId).get();
         if (snap.exists) {
-          final d     = snap.data()!;
-          final drew  = ((d['drew_remaining'] as num?)?.toInt() ?? 0) + drewDelta;
-          final plast = ((d['plast_remaining'] as num?)?.toInt() ?? 0) + plastDelta;
+          final d      = snap.data()!;
+          final drew   = ((d['drew_remaining'] as num?)?.toInt() ?? 0) + drewDelta;
+          final plast  = ((d['plast_remaining'] as num?)?.toInt() ?? 0) + plastDelta;
+          // Korekta dotyczy pustych (widoczna tylko w trybie pustych)
+          final drewP  = ((d['drew_puste'] as num?)?.toInt() ?? (d['drew_remaining'] as num?)?.toInt() ?? 0) + drewDelta;
+          final plastP = ((d['plast_puste'] as num?)?.toInt() ?? (d['plast_remaining'] as num?)?.toInt() ?? 0) + plastDelta;
           await db.collection(AppConstants.colCrateStates).doc(docId).update({
             'drew_remaining':  drew.clamp(0, 9999),
             'plast_remaining': plast.clamp(0, 9999),
+            'drew_puste':      drewP.clamp(0, 9999),
+            'plast_puste':     plastP.clamp(0, 9999),
           });
         }
       }

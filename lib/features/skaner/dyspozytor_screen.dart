@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../core/models/raport_wstepny.dart';
+import 'crate_flow.dart';
 import 'przypisanie_screen.dart';
 import 'skaner_entry_screen.dart';
 
@@ -691,6 +692,11 @@ class _ZejscieScannerState extends State<_ZejscieScanner> {
         'wniosek_id':      null,
         'created_at':      FieldValue.serverTimestamp(),
       });
+
+      // Skrzynie się opróżniają: PEŁNE → PUSTE (tylko metoda skrzynie)
+      if (!_useWaga) {
+        await zejscieOprozniaSkrzynie(lot, int.tryParse(_iloscCtrl.text) ?? 0);
+      }
 
       // 2. Zaktualizuj pobrano_kg w deliveries (odejmuje od Stanów)
       await db.collection(AppConstants.colDeliveries).doc(d['_id'] as String).update({
@@ -1830,6 +1836,9 @@ class _WniosekTile extends StatelessWidget {
           'wniosek_id':      id,
           'created_at':      FieldValue.serverTimestamp(),
         });
+
+        // Skrzynie się opróżniają: PEŁNE → PUSTE
+        await zejscieOprozniaSkrzynie(lot, (d['skrzynie_ilosc'] as num?)?.toInt() ?? 0);
 
         // 3. Zaktualizuj pobrano_kg w deliveries
         if (delivDocId != null) {

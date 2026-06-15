@@ -6,6 +6,7 @@ import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import '../../core/models/delivery_assignment.dart';
 import '../../core/models/raport_wstepny.dart';
+import 'crate_flow.dart';
 import 'skaner_entry_screen.dart';
 
 class PrzypisanieScreen extends StatefulWidget {
@@ -156,6 +157,9 @@ class _PrzypisanieScreenState extends State<PrzypisanieScreen> {
             'created_at':      FieldValue.serverTimestamp(),
           });
           zejscieId = zejRef.id;
+
+          // Skrzynie tej dostawy się opróżniają: PEŁNE → PUSTE (do wydania)
+          await zejscieOprozniaSkrzynie(lot, (d['skrzynie_ilosc'] as num?)?.toInt() ?? 0);
 
           if (delivDocId != null) {
             await db.collection(AppConstants.colDeliveries)

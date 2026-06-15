@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
+import 'crate_flow.dart';
 import 'skaner_entry_screen.dart';
 
 // ── Ekran cofania przypisanych zejść ("Zwroty") ───────────────────────────────
@@ -185,10 +186,16 @@ class _AssignmentCardState extends State<_AssignmentCard> {
         'cancelled_by_id': widget.userId,
       });
 
-      // 2. usuń zejście
+      // 2. usuń zejście (najpierw odczytaj liczbę skrzyń, by cofnąć opróżnienie)
       final zejscieId = d['zejscie_id'] as String?;
+      int skrzynieIlosc = 0;
       if (zejscieId != null && zejscieId.isNotEmpty) {
-        batch.delete(db.collection('skaner_zejscia').doc(zejscieId));
+        final zejRef = db.collection('skaner_zejscia').doc(zejscieId);
+        final zejSnap = await zejRef.get();
+        if (zejSnap.exists) {
+          skrzynieIlosc = (zejSnap.data()?['skrzynie_ilosc'] as num?)?.toInt() ?? 0;
+        }
+        batch.delete(zejRef);
       }
 
       // 3. przywróć stan (pobrano_kg -= kg)
@@ -212,6 +219,9 @@ class _AssignmentCardState extends State<_AssignmentCard> {
       }
 
       await batch.commit();
+
+      // Cofnij opróżnienie skrzyń: PUSTE → PEŁNE (z produktem)
+      await cofnijOproznienieSkrzynie(lot, skrzynieIlosc);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Zejście cofnięte — surowiec wrócił na stan'),

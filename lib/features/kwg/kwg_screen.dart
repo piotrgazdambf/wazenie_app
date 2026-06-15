@@ -302,6 +302,11 @@ class _KwgScreenState extends ConsumerState<KwgScreen> {
         'plast_total':     plastCnt,
         'drew_remaining':  drewCnt,
         'plast_remaining': plastCnt,
+        // Przyjęcie: skrzynie PEŁNE (z produktem), 0 pustych. Puste powstają przy zejściu.
+        'drew_pelne':      drewCnt,
+        'plast_pelne':     plastCnt,
+        'drew_puste':      0,
+        'plast_puste':     0,
         if (mbDrewCnt > 0) ...{
           'mb_drew_il':   mbDrewCnt,
           'mb_drew_waga': double.tryParse(o.mbDrewWagaCtrl.text.replaceAll(',', '.').trim()) ?? 60.0,

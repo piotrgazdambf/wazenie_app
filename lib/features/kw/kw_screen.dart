@@ -464,6 +464,12 @@ class _KwScreenState extends ConsumerState<KwScreen> {
         'plast_total':     plastCount,
         'drew_remaining':  drewCount,
         'plast_remaining': plastCount,
+        // Przyjęcie: skrzynie są PEŁNE (z produktem), 0 pustych do wydania.
+        // Puste powstają dopiero gdy surowiec z nich zejdzie (akceptacja zejścia).
+        'drew_pelne':      drewCount,
+        'plast_pelne':     plastCount,
+        'drew_puste':      0,
+        'plast_puste':     0,
         'drew_waga_jedn':  drewWagaJedn,
         'plast_waga_jedn': plastWagaJedn,
         'kg_total':        o.wagaNetto,
