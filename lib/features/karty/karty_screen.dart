@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../../app/theme.dart';
 import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
+import '../../core/karta_cascade.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/wpisz_wage_dialog.dart';
 import '../kw/kw_label_generator.dart';
@@ -810,12 +811,64 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
+    final lot = widget.entry.lot;
+    final docId = widget.entry.id;
+    final nazwa = lot.isNotEmpty ? lot : widget.entry.nrDostawy;
+
+    // Policz powiązania (co zostanie usunięte razem z kartą)
+    KartaPowiazania? p;
+    try {
+      p = await policzPowiazaniaKarty(lot, docId);
+    } catch (_) {}
+    if (!mounted) return;
+
+    final lista = <String>[
+      'Karta ważenia (dostawa)',
+      if (p?.maStanSkrzyn ?? true) 'Stan skrzyń',
+      if ((p?.akcjeSkrzyn ?? 0) > 0) 'Akcje skrzyń: ${p!.akcjeSkrzyn}',
+      if ((p?.mcr ?? 0) > 0) 'Wpisy MCR: ${p!.mcr}',
+      if ((p?.zejscia ?? 0) > 0) 'Zejścia surowca: ${p!.zejscia}',
+      if ((p?.wnioski ?? 0) > 0) 'Wnioski skanera: ${p!.wnioski}',
+      if ((p?.przypisania ?? 0) > 0) 'Przypisania do raportów: ${p!.przypisania}',
+    ];
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Usuń kartę ważenia'),
-        content: Text(
-          'Na pewno usunąć kartę ${widget.entry.lot.isNotEmpty ? widget.entry.lot : widget.entry.nrDostawy}?\n\nTej operacji nie można cofnąć.',
+        title: const Text('Usuń kartę całkowicie'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Karta $nazwa zostanie usunięta wraz ze wszystkimi śladami:',
+                style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 10),
+            ...lista.map((s) => Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(children: [
+                const Text('•  ', style: TextStyle(color: AppTheme.textSecondary)),
+                Expanded(child: Text(s, style: const TextStyle(fontSize: 13))),
+              ]),
+            )),
+            if (p?.maAktywnosc ?? false) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.warningOrange.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '⚠ Ta karta ma zejścia/przypisania — to nie wygląda na pustą próbną kartę. '
+                  'Usunięcie cofnie też powiązane raporty.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.warningOrange),
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            const Text('Tej operacji nie można cofnąć.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          ],
         ),
         actions: [
           TextButton(
@@ -825,18 +878,24 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
-            child: const Text('Usuń', style: TextStyle(color: Colors.white)),
+            child: const Text('Usuń wszystko', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
     final nav = Navigator.of(context);
-    await FirebaseFirestore.instance
-        .collection(AppConstants.colDeliveries)
-        .doc(widget.entry.id)
-        .delete();
-    if (mounted) nav.pop();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await usunKarteKaskadowo(lot: lot, docId: docId, nrDostawy: widget.entry.nrDostawy);
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Karta i wszystkie jej ślady usunięte'),
+        backgroundColor: AppTheme.successGreen));
+      if (mounted) nav.pop();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Błąd usuwania: $e'), backgroundColor: AppTheme.errorRed));
+    }
   }
 
   Future<void> _save() async {
