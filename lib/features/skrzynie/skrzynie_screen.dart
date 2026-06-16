@@ -59,12 +59,13 @@ class CrateState {
     plastTotal:     (d['plast_total']     as num?)?.toInt()    ?? 0,
     drewRemaining:  (d['drew_remaining']  as num?)?.toInt()    ?? 0,
     plastRemaining: (d['plast_remaining'] as num?)?.toInt()    ?? 0,
-    // Dostawy bez pól pelne/puste (sprzed wdrożenia): skrzynie są PEŁNE
-    // (z produktem), puste = 0. Puste powstają dopiero gdy surowiec zejdzie.
-    drewPelne:      (d['drew_pelne']  as num?)?.toInt() ?? (d['drew_remaining']  as num?)?.toInt() ?? 0,
-    plastPelne:     (d['plast_pelne'] as num?)?.toInt() ?? (d['plast_remaining'] as num?)?.toInt() ?? 0,
-    drewPuste:      (d['drew_puste']  as num?)?.toInt() ?? 0,
-    plastPuste:     (d['plast_puste'] as num?)?.toInt() ?? 0,
+    // Stare dostawy (sprzed wdrożenia) bez pól pelne/puste: zostają jak dawniej —
+    // w „pustych" (puste=remaining), 0 w „z produktem". Tylko NOWE karty (z polem
+    // drew_pelne) trafiają do „z produktem".
+    drewPelne:      (d['drew_pelne']  as num?)?.toInt() ?? 0,
+    plastPelne:     (d['plast_pelne'] as num?)?.toInt() ?? 0,
+    drewPuste:      (d['drew_puste']  as num?)?.toInt() ?? (d['drew_remaining']  as num?)?.toInt() ?? 0,
+    plastPuste:     (d['plast_puste'] as num?)?.toInt() ?? (d['plast_remaining'] as num?)?.toInt() ?? 0,
     drewWagaJedn:   (d['drew_waga_jedn']  as num?)?.toDouble() ?? 20.0,
     plastWagaJedn:  (d['plast_waga_jedn'] as num?)?.toDouble() ?? 10.0,
     kgTotal:        (d['kg_total']        as num?)?.toDouble() ?? 0,

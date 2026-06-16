@@ -25,9 +25,9 @@ Future<void> zejscieOprozniaSkrzynie(String lot, int ilosc) async {
       final snap = await tx.get(ref);
       if (!snap.exists) return;
       final d = snap.data()!;
-      // brak pola pelne (stara dostawa) => skrzynie są pełne (= remaining)
-      final drewPelne  = (d['drew_pelne']  as num?)?.toInt() ?? _i(d, 'drew_remaining');
-      final plastPelne = (d['plast_pelne'] as num?)?.toInt() ?? _i(d, 'plast_remaining');
+      // brak pola pelne (stara dostawa) => 0 (stare zostają jak dawniej, nie ruszamy)
+      final drewPelne  = _i(d, 'drew_pelne');
+      final plastPelne = _i(d, 'plast_pelne');
       final drewPuste  = _i(d, 'drew_puste');
       final plastPuste = _i(d, 'plast_puste');
       final drewMove  = ilosc.clamp(0, drewPelne);
