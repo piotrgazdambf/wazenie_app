@@ -105,3 +105,12 @@ String dateSearchBlob(String? raw) {
     '$y-$mm-$dd',
   ].join(' ');
 }
+
+/// Jak [dateSearchBlob], ale dla daty z Timestamp (np. `created_at` —
+/// data wyświetlana na kafelku, czyli kiedy zlecenie wpadło do dyspozytora).
+String dateTimeSearchBlob(DateTime? dt) {
+  if (dt == null) return '';
+  final dd = dt.day.toString().padLeft(2, '0');
+  final mm = dt.month.toString().padLeft(2, '0');
+  return dateSearchBlob('$dd.$mm.${dt.year}');
+}
