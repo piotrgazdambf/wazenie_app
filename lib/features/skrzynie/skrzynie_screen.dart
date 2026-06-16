@@ -543,6 +543,73 @@ class _AkcjeTab extends ConsumerWidget {
     await FirebaseFirestore.instance.collection(AppConstants.colCrateActions).doc(id).delete();
   }
 
+  // Cofnij wydanie: przywraca puste skrzynie na stan i usuwa akcję.
+  Future<void> _cofnijAkcja(BuildContext context, CrateAction a) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cofnij wydanie'),
+        content: Text('Cofnąć wydanie ${a.drewZdj}D + ${a.plastZdj}P'
+            '${a.dostawca.isNotEmpty ? " dla ${a.dostawca}" : ""}?\n'
+            'Puste skrzynie wrócą na stan, a akcja zniknie z listy.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryMid),
+            child: const Text('Cofnij', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final db = FirebaseFirestore.instance;
+    try {
+      // 1. znajdź crateState do przywrócenia (po LOT-cie albo po dostawcy)
+      DocumentReference<Map<String, dynamic>>? ref;
+      if (a.lot.isNotEmpty) {
+        final r = db.collection(AppConstants.colCrateStates).doc(a.lot.replaceAll('/', '_'));
+        if ((await r.get()).exists) ref = r;
+      }
+      if (ref == null && a.dostawca.isNotEmpty) {
+        final q = await db.collection(AppConstants.colCrateStates)
+            .where('dostawca', isEqualTo: a.dostawca).limit(1).get();
+        if (q.docs.isNotEmpty) ref = q.docs.first.reference;
+      }
+      // 2. przywróć puste + remaining (transakcja, z fallbackiem dla starych dostaw)
+      if (ref != null) {
+        final rr = ref;
+        await db.runTransaction((tx) async {
+          final s = await tx.get(rr);
+          if (!s.exists) return;
+          final d = s.data()!;
+          int gi(String k) => (d[k] as num?)?.toInt() ?? 0;
+          final drewPuste  = (d['drew_puste']  as num?)?.toInt() ?? gi('drew_remaining');
+          final plastPuste = (d['plast_puste'] as num?)?.toInt() ?? gi('plast_remaining');
+          tx.update(rr, {
+            'drew_puste':      drewPuste  + a.drewZdj,
+            'plast_puste':     plastPuste + a.plastZdj,
+            'drew_remaining':  gi('drew_remaining')  + a.drewZdj,
+            'plast_remaining': gi('plast_remaining') + a.plastZdj,
+            'active': true,
+          });
+        });
+      }
+      // 3. usuń akcję
+      await db.collection(AppConstants.colCrateActions).doc(a.id).delete();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Cofnięto — puste skrzynie wróciły na stan'),
+          backgroundColor: AppTheme.successGreen));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: AppTheme.errorRed));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async   = ref.watch(crateActionsProvider);
@@ -630,6 +697,13 @@ class _AkcjeTab extends ConsumerWidget {
                       ],
                     ]),
                   ])),
+                  // Cofnij — tylko dla wydań (Zejście), przywraca puste skrzynie
+                  if (!isPrzyjecie && (a.drewZdj + a.plastZdj) > 0)
+                    IconButton(
+                      icon: const Icon(Icons.undo, size: 18, color: AppTheme.primaryMid),
+                      onPressed: () => _cofnijAkcja(context, a),
+                      tooltip: 'Cofnij wydanie (przywróć skrzynie na stan)',
+                    ),
                   if (isAdmin)
                     IconButton(
                       icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
