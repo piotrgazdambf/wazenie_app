@@ -599,6 +599,7 @@ class _RightPanelState extends State<_RightPanel> {
                   dd['lot'] as String?,
                   dd['odmiana'] as String?,
                   dd['owoc'] as String?,
+                  dd['wozkowy_name'] as String?, // kto ściągnął
                   // data = kiedy wózkowy wrzucił do dyspozytorni
                   dateTimeSearchBlob((dd['created_at'] as Timestamp?)?.toDate()),
                 ]);

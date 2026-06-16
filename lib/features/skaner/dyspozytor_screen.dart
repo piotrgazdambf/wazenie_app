@@ -396,6 +396,7 @@ class _OczekujaceAccordionState extends State<_OczekujaceAccordion> {
             d2['lot'] as String?,
             d2['odmiana'] as String?,
             d2['owoc'] as String?,
+            d2['wozkowy_name'] as String?, // kto ściągnął
             // data = kiedy wózkowy wrzucił do dyspozytorni (wyświetlana na kafelku)
             dateTimeSearchBlob((d2['created_at'] as Timestamp?)?.toDate()),
           ]);
