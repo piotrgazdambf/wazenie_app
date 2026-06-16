@@ -396,6 +396,7 @@ class _OczekujaceAccordionState extends State<_OczekujaceAccordion> {
             d2['lot'] as String?,
             d2['odmiana'] as String?,
             d2['owoc'] as String?,
+            dateSearchBlob(d2['data_dostawy'] as String?),
           ]);
         }).toList();
 

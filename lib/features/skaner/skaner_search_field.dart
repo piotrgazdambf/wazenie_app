@@ -80,3 +80,28 @@ bool matchesQuery(String q, Iterable<String?> fields) {
   }
   return false;
 }
+
+/// Zamienia datę (ISO `yyyy-MM-dd` lub `dd.MM.yyyy`) na zlepek różnych
+/// zapisów, żeby dało się szukać po `08.06`, `8.6`, `08.06.2025`, itp.
+/// Dla nierozpoznanego formatu zwraca surową wartość.
+String dateSearchBlob(String? raw) {
+  if (raw == null || raw.isEmpty) return '';
+  final s = raw.trim();
+  int? y, m, d;
+  final iso = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})').firstMatch(s);
+  final dmy = RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})').firstMatch(s);
+  if (iso != null) {
+    y = int.parse(iso.group(1)!); m = int.parse(iso.group(2)!); d = int.parse(iso.group(3)!);
+  } else if (dmy != null) {
+    d = int.parse(dmy.group(1)!); m = int.parse(dmy.group(2)!); y = int.parse(dmy.group(3)!);
+  } else {
+    return s;
+  }
+  final mm = m.toString().padLeft(2, '0');
+  final dd = d.toString().padLeft(2, '0');
+  return [
+    s,
+    '$dd.$mm.$y', '$dd.$mm', '$d.$m', '$dd.$mm.${y.toString().substring(2)}',
+    '$y-$mm-$dd',
+  ].join(' ');
+}

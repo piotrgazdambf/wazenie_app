@@ -599,6 +599,7 @@ class _RightPanelState extends State<_RightPanel> {
                   dd['lot'] as String?,
                   dd['odmiana'] as String?,
                   dd['owoc'] as String?,
+                  dateSearchBlob(dd['data_dostawy'] as String?),
                 ]);
               }).toList();
 

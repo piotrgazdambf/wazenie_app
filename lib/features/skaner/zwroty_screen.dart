@@ -94,6 +94,7 @@ class _PrzeslaneTabState extends ConsumerState<_PrzeslaneTab> {
               d.data()['odmiana'] as String?,
               d.data()['owoc'] as String?,
               d.data()['lot_produkcji'] as String?,
+              dateSearchBlob(d.data()['data_karty_wazenia'] as String?),
             ])).toList();
             if (shown.isEmpty) {
               return _Empty(_query.isEmpty
@@ -157,6 +158,7 @@ class _ZwroconeTabState extends ConsumerState<_ZwroconeTab> {
               d.data()['odmiana'] as String?,
               d.data()['owoc'] as String?,
               d.data()['lot_produkcji'] as String?,
+              dateSearchBlob(d.data()['data_karty_wazenia'] as String?),
             ])).toList();
             if (shown.isEmpty) {
               return _Empty(_query.isEmpty
