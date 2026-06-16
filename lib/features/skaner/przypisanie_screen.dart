@@ -599,8 +599,8 @@ class _RightPanelState extends State<_RightPanel> {
                   dd['lot'] as String?,
                   dd['odmiana'] as String?,
                   dd['owoc'] as String?,
-                  dateSearchBlob(dd['data_dostawy'] as String?),            // data z karty ważenia
-                  dateTimeSearchBlob((dd['created_at'] as Timestamp?)?.toDate()), // data wpadnięcia
+                  // data = kiedy wózkowy wrzucił do dyspozytorni
+                  dateTimeSearchBlob((dd['created_at'] as Timestamp?)?.toDate()),
                 ]);
               }).toList();
 

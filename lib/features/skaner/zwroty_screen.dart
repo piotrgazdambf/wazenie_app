@@ -94,7 +94,6 @@ class _PrzeslaneTabState extends ConsumerState<_PrzeslaneTab> {
               d.data()['odmiana'] as String?,
               d.data()['owoc'] as String?,
               d.data()['lot_produkcji'] as String?,
-              dateSearchBlob(d.data()['data_karty_wazenia'] as String?),       // data z karty ważenia
               dateTimeSearchBlob((d.data()['created_at'] as Timestamp?)?.toDate()),   // data przypisania
               dateTimeSearchBlob((d.data()['cancelled_at'] as Timestamp?)?.toDate()), // data cofnięcia
             ])).toList();
@@ -160,7 +159,6 @@ class _ZwroconeTabState extends ConsumerState<_ZwroconeTab> {
               d.data()['odmiana'] as String?,
               d.data()['owoc'] as String?,
               d.data()['lot_produkcji'] as String?,
-              dateSearchBlob(d.data()['data_karty_wazenia'] as String?),       // data z karty ważenia
               dateTimeSearchBlob((d.data()['created_at'] as Timestamp?)?.toDate()),   // data przypisania
               dateTimeSearchBlob((d.data()['cancelled_at'] as Timestamp?)?.toDate()), // data cofnięcia
             ])).toList();

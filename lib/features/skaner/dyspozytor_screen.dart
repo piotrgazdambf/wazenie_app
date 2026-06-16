@@ -396,8 +396,8 @@ class _OczekujaceAccordionState extends State<_OczekujaceAccordion> {
             d2['lot'] as String?,
             d2['odmiana'] as String?,
             d2['owoc'] as String?,
-            dateSearchBlob(d2['data_dostawy'] as String?),            // data z karty ważenia
-            dateTimeSearchBlob((d2['created_at'] as Timestamp?)?.toDate()), // data wpadnięcia (wyświetlana)
+            // data = kiedy wózkowy wrzucił do dyspozytorni (wyświetlana na kafelku)
+            dateTimeSearchBlob((d2['created_at'] as Timestamp?)?.toDate()),
           ]);
         }).toList();
 
