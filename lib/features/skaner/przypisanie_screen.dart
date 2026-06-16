@@ -8,6 +8,7 @@ import '../../core/models/delivery_assignment.dart';
 import '../../core/models/raport_wstepny.dart';
 import 'crate_flow.dart';
 import 'skaner_entry_screen.dart';
+import 'skaner_search_field.dart';
 
 class PrzypisanieScreen extends StatefulWidget {
   final TypProdukcji typProdukcji;
@@ -535,6 +536,7 @@ class _RightPanel extends StatefulWidget {
 class _RightPanelState extends State<_RightPanel> {
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _stream;
   String _lastDocIds = '';
+  String _query = '';
 
   @override
   void initState() {
@@ -556,6 +558,7 @@ class _RightPanelState extends State<_RightPanel> {
           subtitle: 'Przeciągnij dostawę na kartę raportu',
           color: kSkanerAccent,
         ),
+        SkanerSearchField(onChanged: (q) => setState(() => _query = q)),
         Expanded(
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: _stream,
@@ -583,19 +586,32 @@ class _RightPanelState extends State<_RightPanel> {
               if (newIds != _lastDocIds) {
                 _lastDocIds = newIds;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  widget.onDocsLoaded(docs);
+                  widget.onDocsLoaded(docs); // pełna lista — potrzebna do Prześlij
                 });
               }
 
-              if (docs.isEmpty) {
+              // Filtr lupy dotyczy tylko tego, co wyświetlamy (przypisania
+              // nadal działają na pełnej liście przekazanej do onDocsLoaded).
+              final shown = docs.where((doc) {
+                final dd = doc.data();
+                return matchesQuery(_query, [
+                  dd['dostawca'] as String?,
+                  dd['lot'] as String?,
+                  dd['odmiana'] as String?,
+                  dd['owoc'] as String?,
+                ]);
+              }).toList();
+
+              if (shown.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.check_circle_outline, color: kSkanerAccent, size: 48),
                       const SizedBox(height: 12),
-                      const Text('Brak oczekujących dostaw',
-                          style: TextStyle(color: kSkanerTextSec, fontSize: 15)),
+                      Text(
+                          _query.isEmpty ? 'Brak oczekujących dostaw' : 'Brak wyników wyszukiwania',
+                          style: const TextStyle(color: kSkanerTextSec, fontSize: 15)),
                     ],
                   ),
                 );
@@ -603,9 +619,9 @@ class _RightPanelState extends State<_RightPanel> {
 
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
-                itemCount: docs.length,
+                itemCount: shown.length,
                 itemBuilder: (_, i) {
-                  final doc = docs[i];
+                  final doc = shown[i];
                   return _WniosekDragTile(
                     doc:        doc,
                     assignment: widget.assignments[doc.id],

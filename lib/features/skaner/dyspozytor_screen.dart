@@ -11,6 +11,7 @@ import '../../core/models/raport_wstepny.dart';
 import 'crate_flow.dart';
 import 'przypisanie_screen.dart';
 import 'skaner_entry_screen.dart';
+import 'skaner_search_field.dart';
 
 // ── Provider: liczba oczekujących wniosków ────────────────────────────────────
 
@@ -317,7 +318,7 @@ class _DyspozytooPanelState extends State<_DyspozytoPanel> {
 
 // ── Accordion Oczekujące ──────────────────────────────────────────────────────
 
-class _OczekujaceAccordion extends StatelessWidget {
+class _OczekujaceAccordion extends StatefulWidget {
   final AppUser user;
   final bool expanded;
   final VoidCallback onToggle;
@@ -327,6 +328,18 @@ class _OczekujaceAccordion extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
   });
+
+  @override
+  State<_OczekujaceAccordion> createState() => _OczekujaceAccordionState();
+}
+
+class _OczekujaceAccordionState extends State<_OczekujaceAccordion> {
+  String _query = '';
+
+  // skróty do pól widgetu (po konwersji na Stateful)
+  AppUser get user => widget.user;
+  bool get expanded => widget.expanded;
+  VoidCallback get onToggle => widget.onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -374,8 +387,17 @@ class _OczekujaceAccordion extends StatelessWidget {
           return aMs.compareTo(bMs);
         });
 
-        final docs = rawDocs;
-        final count = docs.length;
+        final count = rawDocs.length; // badge = wszystkie oczekujące
+        // Filtr lupy: dostawca / LOT / odmiana / owoc
+        final docs = rawDocs.where((doc) {
+          final d2 = doc.data() as Map;
+          return matchesQuery(_query, [
+            d2['dostawca'] as String?,
+            d2['lot'] as String?,
+            d2['odmiana'] as String?,
+            d2['owoc'] as String?,
+          ]);
+        }).toList();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -426,6 +448,8 @@ class _OczekujaceAccordion extends StatelessWidget {
             // Zawartość
             if (expanded) ...[
               const SizedBox(height: 10),
+              if (count > 0)
+                SkanerSearchField(onChanged: (q) => setState(() => _query = q)),
               if (snap.connectionState == ConnectionState.waiting)
                 const Center(child: Padding(
                   padding: EdgeInsets.all(20),
@@ -438,9 +462,10 @@ class _OczekujaceAccordion extends StatelessWidget {
                     color: kSkanerCard.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Center(
-                    child: Text('Brak oczekujących zleceń',
-                        style: TextStyle(color: kSkanerTextSec, fontSize: 14)),
+                  child: Center(
+                    child: Text(
+                        _query.isEmpty ? 'Brak oczekujących zleceń' : 'Brak wyników wyszukiwania',
+                        style: const TextStyle(color: kSkanerTextSec, fontSize: 14)),
                   ),
                 )
               else

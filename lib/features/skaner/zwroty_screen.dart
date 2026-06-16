@@ -7,6 +7,7 @@ import '../../core/auth/pin_auth_service.dart';
 import '../../core/constants.dart';
 import 'crate_flow.dart';
 import 'skaner_entry_screen.dart';
+import 'skaner_search_field.dart';
 
 // ── Ekran cofania przypisanych zejść ("Zwroty") ───────────────────────────────
 //
@@ -56,87 +57,127 @@ class ZwrotyScreen extends ConsumerWidget {
 
 // ── Zakładka: przesłane (status przypisany) — można cofnąć ────────────────────
 
-class _PrzeslaneTab extends ConsumerWidget {
+class _PrzeslaneTab extends ConsumerStatefulWidget {
   const _PrzeslaneTab();
+  @override
+  ConsumerState<_PrzeslaneTab> createState() => _PrzeslaneTabState();
+}
+
+class _PrzeslaneTabState extends ConsumerState<_PrzeslaneTab> {
+  String _query = '';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final userName = ref.watch(currentSessionProvider)?.user.name ?? '';
     final userId   = ref.watch(currentSessionProvider)?.user.id ?? '';
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection(AppConstants.colDeliveryAssign)
-          .where('status', isEqualTo: 'przypisany')
-          .snapshots(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
-        }
-        final docs = List.of(snap.data?.docs ?? [])
-          ..sort((a, b) {
-            final am = (a.data()['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            final bm = (b.data()['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            return bm.compareTo(am);
-          });
-        if (docs.isEmpty) {
-          return const _Empty('Brak przesłanych zejść do cofnięcia');
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: docs.length,
-          itemBuilder: (_, i) => _AssignmentCard(
-            // Klucz per dokument — bez niego stan karty (spinner _busy)
-            // przykleja się do następnej pozycji gdy wiersz znika z listy.
-            key: ValueKey(docs[i].id),
-            doc: docs[i],
-            akcja: 'cofnij',
-            userName: userName,
-            userId: userId,
-          ),
-        );
-      },
-    );
+    return Column(children: [
+      SkanerSearchField(onChanged: (q) => setState(() => _query = q)),
+      Expanded(
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection(AppConstants.colDeliveryAssign)
+              .where('status', isEqualTo: 'przypisany')
+              .snapshots(),
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
+            }
+            final docs = List.of(snap.data?.docs ?? [])
+              ..sort((a, b) {
+                final am = (a.data()['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+                final bm = (b.data()['created_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+                return bm.compareTo(am);
+              });
+            final shown = docs.where((d) => matchesQuery(_query, [
+              d.data()['lot_dostawy'] as String?,
+              d.data()['dostawca'] as String?,
+              d.data()['odmiana'] as String?,
+              d.data()['owoc'] as String?,
+              d.data()['lot_produkcji'] as String?,
+            ])).toList();
+            if (shown.isEmpty) {
+              return _Empty(_query.isEmpty
+                  ? 'Brak przesłanych zejść do cofnięcia'
+                  : 'Brak wyników wyszukiwania');
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: shown.length,
+              itemBuilder: (_, i) => _AssignmentCard(
+                // Klucz per dokument — bez niego stan karty (spinner _busy)
+                // przykleja się do następnej pozycji gdy wiersz znika z listy.
+                key: ValueKey(shown[i].id),
+                doc: shown[i],
+                akcja: 'cofnij',
+                userName: userName,
+                userId: userId,
+              ),
+            );
+          },
+        ),
+      ),
+    ]);
   }
 }
 
 // ── Zakładka: zwrócone (status cofniety) — można przywrócić do puli ───────────
 
-class _ZwroconeTab extends ConsumerWidget {
+class _ZwroconeTab extends ConsumerStatefulWidget {
   const _ZwroconeTab();
+  @override
+  ConsumerState<_ZwroconeTab> createState() => _ZwroconeTabState();
+}
+
+class _ZwroconeTabState extends ConsumerState<_ZwroconeTab> {
+  String _query = '';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection(AppConstants.colDeliveryAssign)
-          .where('status', isEqualTo: 'cofniety')
-          .snapshots(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
-        }
-        final docs = List.of(snap.data?.docs ?? [])
-          ..sort((a, b) {
-            final am = (a.data()['cancelled_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            final bm = (b.data()['cancelled_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            return bm.compareTo(am);
-          });
-        if (docs.isEmpty) {
-          return const _Empty('Brak zwróconych zejść');
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: docs.length,
-          itemBuilder: (_, i) => _AssignmentCard(
-            key: ValueKey(docs[i].id),
-            doc: docs[i],
-            akcja: 'przywroc',
-            userName: '',
-            userId: '',
-          ),
-        );
-      },
-    );
+  Widget build(BuildContext context) {
+    return Column(children: [
+      SkanerSearchField(onChanged: (q) => setState(() => _query = q)),
+      Expanded(
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection(AppConstants.colDeliveryAssign)
+              .where('status', isEqualTo: 'cofniety')
+              .snapshots(),
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: kSkanerAccent));
+            }
+            final docs = List.of(snap.data?.docs ?? [])
+              ..sort((a, b) {
+                final am = (a.data()['cancelled_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+                final bm = (b.data()['cancelled_at'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+                return bm.compareTo(am);
+              });
+            final shown = docs.where((d) => matchesQuery(_query, [
+              d.data()['lot_dostawy'] as String?,
+              d.data()['dostawca'] as String?,
+              d.data()['odmiana'] as String?,
+              d.data()['owoc'] as String?,
+              d.data()['lot_produkcji'] as String?,
+            ])).toList();
+            if (shown.isEmpty) {
+              return _Empty(_query.isEmpty
+                  ? 'Brak zwróconych zejść'
+                  : 'Brak wyników wyszukiwania');
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: shown.length,
+              itemBuilder: (_, i) => _AssignmentCard(
+                key: ValueKey(shown[i].id),
+                doc: shown[i],
+                akcja: 'przywroc',
+                userName: '',
+                userId: '',
+              ),
+            );
+          },
+        ),
+      ),
+    ]);
   }
 }
 
