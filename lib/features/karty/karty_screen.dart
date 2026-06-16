@@ -830,6 +830,7 @@ class _KartaDetailSheetState extends State<_KartaDetailSheet> {
       if ((p?.zejscia ?? 0) > 0) 'Zejścia surowca: ${p!.zejscia}',
       if ((p?.wnioski ?? 0) > 0) 'Wnioski skanera: ${p!.wnioski}',
       if ((p?.przypisania ?? 0) > 0) 'Przypisania do raportów: ${p!.przypisania}',
+      'Zwrot skrzyń MB do salda (jeśli były na karcie)',
     ];
 
     final confirmed = await showDialog<bool>(
