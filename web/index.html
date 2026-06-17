@@ -55,8 +55,62 @@
       });
     }
   </script>
+
+  <!--
+    Wykrywanie nowej wersji + pasek "Odśwież". Flutterowy service worker po
+    wdrożeniu CZEKA aż zamkną się wszystkie karty, więc operator z otwartą
+    kartą cały dzień chodzi na starym kodzie. Tu porównujemy flutter_bootstrap.js
+    (serwowany no-cache, zmienia się co build) — gdy się zmieni, pokazujemy pasek.
+    Klik = wyczyść TYLKO cache kodu (Cache Storage) + wyrejestruj SW + przeładuj.
+    NIE dotyka IndexedDB → bufor offline i dane Firestore zostają nietknięte.
+  -->
+  <script>
+    (function () {
+      var initial = null, shown = false;
+      function showBar() {
+        if (shown) return; shown = true;
+        var b = document.getElementById('mbf-update-bar');
+        if (b) b.style.display = 'flex';
+      }
+      function check() {
+        fetch('flutter_bootstrap.js?_=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.text(); })
+          .then(function (t) {
+            if (initial === null) { initial = t; return; }
+            if (t !== initial) showBar();
+          }).catch(function () {});
+      }
+      window.addEventListener('load', function () {
+        check();
+        setInterval(check, 120000); // co 2 min
+        document.addEventListener('visibilitychange', function () {
+          if (!document.hidden) check(); // i przy powrocie do karty
+        });
+        var btn = document.getElementById('mbf-update-btn');
+        if (btn) btn.addEventListener('click', function () {
+          btn.textContent = 'Odświeżam…';
+          var jobs = [];
+          if (window.caches) jobs.push(
+            caches.keys().then(function (ks) {
+              return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+            }));
+          if (navigator.serviceWorker) jobs.push(
+            navigator.serviceWorker.getRegistrations().then(function (rs) {
+              return Promise.all(rs.map(function (r) { return r.unregister(); }));
+            }));
+          Promise.all(jobs).then(function () { location.reload(); })
+                           .catch(function () { location.reload(); });
+        });
+      });
+    })();
+  </script>
 </head>
 <body>
+  <!-- Pasek nowej wersji (ukryty domyślnie) -->
+  <div id="mbf-update-bar" style="display:none; position:fixed; left:0; right:0; bottom:0; z-index:99999; background:#2D6A4F; color:#fff; font-family:Roboto,Arial,sans-serif; font-size:14px; padding:12px 16px; align-items:center; justify-content:center; gap:14px; box-shadow:0 -2px 12px rgba(0,0,0,.35);">
+    <span>🔄 Dostępna nowa wersja aplikacji</span>
+    <button id="mbf-update-btn" style="background:#fff; color:#2D6A4F; border:none; border-radius:8px; padding:8px 18px; font-weight:700; cursor:pointer; font-family:inherit; font-size:14px;">Odśwież teraz</button>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
